@@ -76,7 +76,7 @@
             <td>{{ canhoto.pk }}</td>
             <td>
               {% if canhoto.arquivo %}
-                <a href="{{ canhoto.arquivo.url }}" target="_blank" class="text-truncate d-inline-block" style="max-width:180px;" title="{{ canhoto.nome_arquivo }}">
+                <a href="{% url 'canhotos:arquivo' canhoto.pk %}" target="_blank" class="text-truncate d-inline-block" style="max-width:180px;" title="{{ canhoto.nome_arquivo }}">
                   <i class="bi bi-file-earmark me-1"></i>{{ canhoto.nome_arquivo }}
                 </a>
               {% else %}

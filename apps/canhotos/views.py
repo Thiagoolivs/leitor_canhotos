@@ -8,8 +8,11 @@ Uses class-based views throughout.
 - VincularManualView: POST only, manually links canhoto to a nota fiscal
 """
 import logging
+import mimetypes
+import os
 
 from django.contrib import messages
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy, reverse
 from django.views import View
@@ -57,6 +60,40 @@ class CanhotoDetailView(DetailView):
         context = super().get_context_data(**kwargs)
         context['vincular_form'] = VincularManualForm()
         return context
+
+
+class ServirArquivoCanhotoView(View):
+    """
+    Serve o arquivo físico do canhoto independente de onde ele esteja no disco.
+    Necessário porque os arquivos podem estar em pastas do scanner fora do MEDIA_ROOT.
+    """
+    http_method_names = ['get']
+
+    def get(self, request, pk):
+        from django.conf import settings
+        from pathlib import Path
+
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        if not canhoto.arquivo:
+            raise Http404('Arquivo não associado a este canhoto.')
+
+        # Resolve o caminho absoluto
+        caminho = Path(str(canhoto.arquivo.name))
+        if not caminho.is_absolute():
+            caminho = Path(settings.MEDIA_ROOT) / caminho
+
+        if not caminho.exists():
+            raise Http404(f'Arquivo não encontrado em disco: {caminho}')
+
+        content_type, _ = mimetypes.guess_type(str(caminho))
+        content_type = content_type or 'application/octet-stream'
+
+        return FileResponse(
+            open(caminho, 'rb'),
+            content_type=content_type,
+            as_attachment=False,
+            filename=caminho.name,
+        )
 
 
 class ReprocessarOCRView(View):
