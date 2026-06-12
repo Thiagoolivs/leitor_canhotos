@@ -17,6 +17,30 @@
   </div>
 </div>
 
+<!-- Status bar — updated silently by polling -->
+<div class="row mb-3" id="status-bar">
+  <div class="col-auto">
+    <span class="badge bg-warning text-dark fs-6 px-3 py-2">
+      Aguardando: <span id="count-aguardando">—</span>
+    </span>
+  </div>
+  <div class="col-auto">
+    <span class="badge bg-success fs-6 px-3 py-2">
+      Finalizados: <span id="count-finalizado">—</span>
+    </span>
+  </div>
+  <div class="col-auto">
+    <span class="badge bg-danger fs-6 px-3 py-2">
+      Erros: <span id="count-erro">—</span>
+    </span>
+  </div>
+  <div class="col-auto text-muted small d-flex align-items-center">
+    Total: <span id="count-total" class="ms-1 fw-bold">—</span>
+    &nbsp;|&nbsp;
+    <span id="last-update" class="ms-1">atualizando...</span>
+  </div>
+</div>
+
 <!-- Filter Form -->
 <div class="card shadow-sm mb-4">
   <div class="card-header bg-white">
@@ -181,4 +205,38 @@
   </p>
 </nav>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var POLL_INTERVAL = 30000; // 30 seconds
+  var apiUrl = "{% url 'notas:status_counts' %}";
+
+  function pad(n) { return n < 10 ? '0' + n : n; }
+
+  function updateCounts(data) {
+    document.getElementById('count-aguardando').textContent = data.aguardando;
+    document.getElementById('count-finalizado').textContent = data.finalizado;
+    document.getElementById('count-erro').textContent = data.erro;
+    document.getElementById('count-total').textContent = data.total;
+    var now = new Date();
+    document.getElementById('last-update').textContent =
+      'atualizado às ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+  }
+
+  function fetchCounts() {
+    fetch(apiUrl, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(updateCounts)
+      .catch(function () {
+        document.getElementById('last-update').textContent = 'erro ao atualizar';
+      });
+  }
+
+  // Fetch immediately on page load, then every 30s
+  fetchCounts();
+  setInterval(fetchCounts, POLL_INTERVAL);
+})();
+</script>
 {% endblock %}

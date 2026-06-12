@@ -8,9 +8,10 @@ Filtering is handled by django-filter's NotaFiscalFilterSet.
 import logging
 
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
-from django.views.generic import ListView, DetailView, CreateView, UpdateView
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, View
 
 from apps.notas.forms import NotaFiscalFilterSet, NotaFiscalForm
 from apps.notas.models import NotaFiscal
@@ -111,3 +112,17 @@ class NotaFiscalUpdateView(UpdateView):
         context['titulo'] = f'Editar Nota Fiscal {self.object.numero}'
         context['botao'] = 'Salvar Alterações'
         return context
+
+
+class StatusCountsView(View):
+    """Returns current NotaFiscal status counts as JSON for frontend polling."""
+
+    def get(self, request):
+        from apps.notas.models import NotaFiscal, StatusNota
+        counts = {
+            'aguardando': NotaFiscal.objects.filter(status=StatusNota.AGUARDANDO_CANHOTO).count(),
+            'finalizado': NotaFiscal.objects.filter(status=StatusNota.FINALIZADO).count(),
+            'erro': NotaFiscal.objects.filter(status=StatusNota.ERRO).count(),
+            'total': NotaFiscal.objects.count(),
+        }
+        return JsonResponse(counts)
