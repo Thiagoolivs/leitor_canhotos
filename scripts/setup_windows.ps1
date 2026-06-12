@@ -40,8 +40,13 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 Write-OK "Rodando como administrador"
 
 # ── 2. Set execution policy ──────────────────────────────────────────────────
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
-Write-OK "ExecutionPolicy configurada"
+# Ignorado se bloqueado por politica de grupo corporativa (o script ja roda com Bypass)
+try {
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction Stop
+    Write-OK "ExecutionPolicy configurada"
+} catch {
+    Write-Info "ExecutionPolicy nao alterada (politica de grupo ativa) — sem impacto, continuando..."
+}
 
 # ── 3. Install Chocolatey ────────────────────────────────────────────────────
 Write-Step "Instalando Chocolatey (gerenciador de pacotes)"
