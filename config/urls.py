@@ -17,8 +17,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('notas/', include('apps.notas.urls', namespace='notas')),
     path('canhotos/', include('apps.canhotos.urls', namespace='canhotos')),
-    # Redirect root to notas list
-    path('', RedirectView.as_view(url='/notas/', permanent=False), name='home'),
+    # Redirect root to dashboard
+    path('', RedirectView.as_view(url='/notas/dashboard/', permanent=False), name='home'),
 ]
 
 # Serve media files through Django in development
