@@ -1,5 +1,16 @@
 version: '3.9'
 
+# =============================================================================
+# LEITOR DE CANHOTOS — Docker Compose
+#
+# Pastas do scanner configuradas via .env:
+#   SCANNER_HOST_DIR_1=M:\Nota_Fiscal\NF
+#   SCANNER_HOST_DIR_2=M:\Nota_Fiscal\Filial2  (opcional)
+#
+# Para subir tudo:
+#   docker-compose up -d
+# =============================================================================
+
 services:
   db:
     image: postgres:15
@@ -31,22 +42,21 @@ services:
     command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 120
     volumes:
       - .:/app
-      - entrada_canhotos:/entrada_canhotos
-      - processados:/processados
-      - erro:/erro
-      - logs:/app/logs
-      - media:/app/media
+      # Pasta principal do scanner: M:\Nota_Fiscal\NF
+      - "${SCANNER_HOST_DIR_1:-M:\\Nota_Fiscal\\NF}:/entrada_canhotos"
+      # Descomente para adicionar mais pastas (lembre de adicionar nos servicos celery e monitor tambem):
+      # - "${SCANNER_HOST_DIR_2:-M:\\Nota_Fiscal\\Filial2}:/entrada_canhotos_2"
+      # - "${SCANNER_HOST_DIR_3:-M:\\Nota_Fiscal\\SP}:/entrada_canhotos_3"
+      - leitor_processados:/processados
+      - leitor_erro:/erro
+      - leitor_logs:/app/logs
+      - leitor_media:/app/media
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.development
-      - DATABASE_URL=postgres://leitor_canhotos:leitor2024@db:5432/leitor_canhotos
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=django-insecure-change-this-in-production-$(head -c 32 /dev/urandom | base64)
-      - DEBUG=True
-      - SCANNER_INPUT_DIR=/entrada_canhotos
-      - SCANNER_PROCESSED_DIR=/processados
-      - SCANNER_ERROR_DIR=/erro
+      DJANGO_SETTINGS_MODULE: config.settings.development
     depends_on:
       db:
         condition: service_healthy
@@ -59,20 +69,17 @@ services:
     command: celery -A config worker -l info --pool=solo
     volumes:
       - .:/app
-      - entrada_canhotos:/entrada_canhotos
-      - processados:/processados
-      - erro:/erro
-      - logs:/app/logs
-      - media:/app/media
+      - "${SCANNER_HOST_DIR_1:-M:\\Nota_Fiscal\\NF}:/entrada_canhotos"
+      # - "${SCANNER_HOST_DIR_2:-M:\\Nota_Fiscal\\Filial2}:/entrada_canhotos_2"
+      # - "${SCANNER_HOST_DIR_3:-M:\\Nota_Fiscal\\SP}:/entrada_canhotos_3"
+      - leitor_processados:/processados
+      - leitor_erro:/erro
+      - leitor_logs:/app/logs
+      - leitor_media:/app/media
+    env_file:
+      - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.development
-      - DATABASE_URL=postgres://leitor_canhotos:leitor2024@db:5432/leitor_canhotos
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=django-insecure-change-this-in-production
-      - DEBUG=True
-      - SCANNER_INPUT_DIR=/entrada_canhotos
-      - SCANNER_PROCESSED_DIR=/processados
-      - SCANNER_ERROR_DIR=/erro
+      DJANGO_SETTINGS_MODULE: config.settings.development
     depends_on:
       db:
         condition: service_healthy
@@ -85,20 +92,18 @@ services:
     command: python monitoring/scanner_monitor.py
     volumes:
       - .:/app
-      - entrada_canhotos:/entrada_canhotos
-      - processados:/processados
-      - erro:/erro
-      - logs:/app/logs
-      - media:/app/media
+      - "${SCANNER_HOST_DIR_1:-M:\\Nota_Fiscal\\NF}:/entrada_canhotos"
+      # Para monitorar mais pastas, adicione os volumes aqui E no .env:
+      # - "${SCANNER_HOST_DIR_2:-M:\\Nota_Fiscal\\Filial2}:/entrada_canhotos_2"
+      # - "${SCANNER_HOST_DIR_3:-M:\\Nota_Fiscal\\SP}:/entrada_canhotos_3"
+      - leitor_processados:/processados
+      - leitor_erro:/erro
+      - leitor_logs:/app/logs
+      - leitor_media:/app/media
+    env_file:
+      - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.development
-      - DATABASE_URL=postgres://leitor_canhotos:leitor2024@db:5432/leitor_canhotos
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=django-insecure-change-this-in-production
-      - DEBUG=True
-      - SCANNER_INPUT_DIR=/entrada_canhotos
-      - SCANNER_PROCESSED_DIR=/processados
-      - SCANNER_ERROR_DIR=/erro
+      DJANGO_SETTINGS_MODULE: config.settings.development
     depends_on:
       db:
         condition: service_healthy
@@ -107,25 +112,7 @@ services:
 
 volumes:
   postgres_data:
-  logs:
-  media:
-  # On Windows, map M:\Nota_Fiscal\NF to /entrada_canhotos inside the container
-  # Change the driver_opts source to your actual Windows path if needed
-  entrada_canhotos:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/m/Nota_Fiscal/NF
-  processados:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/m/Nota_Fiscal/processados
-  erro:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/m/Nota_Fiscal/erro
+  leitor_logs:
+  leitor_media:
+  leitor_processados:
+  leitor_erro:
