@@ -196,18 +196,26 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ==============================================================================
 
 def _parse_scanner_dirs(value: str) -> list:
-    """Parse SCANNER_INPUT_DIRS: comma-separated string or JSON array."""
+    """Parse comma-separated directory list or JSON array."""
     if not value:
-        return ['/entrada_canhotos']
+        return []
     value = value.strip()
     if value.startswith('['):
         return json.loads(value)
     return [d.strip() for d in value.split(',') if d.strip()]
 
-
-SCANNER_INPUT_DIRS = _parse_scanner_dirs(
-    config('SCANNER_INPUT_DIRS', default='/entrada_canhotos')
+# Folders where scanned INVOICES (notas fiscais) are saved by the scanner.
+# OCR will extract the NF number and automatically create a NotaFiscal record.
+SCANNER_NOTA_DIRS = _parse_scanner_dirs(
+    config('SCANNER_NOTA_DIRS', default='/entrada_notas')
 )
+
+# Folders where scanned CANHOTOS (signed stubs) are saved by the scanner.
+# OCR will extract the NF number, find the matching NotaFiscal and link them.
+SCANNER_CANHOTO_DIRS = _parse_scanner_dirs(
+    config('SCANNER_CANHOTO_DIRS', default='/entrada_canhotos')
+)
+
 SCANNER_PROCESSED_DIR = config('SCANNER_PROCESSED_DIR', default='/processados')
 SCANNER_ERROR_DIR = config('SCANNER_ERROR_DIR', default='/erro')
 
