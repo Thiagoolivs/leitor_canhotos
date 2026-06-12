@@ -10,6 +10,7 @@ Architecture decisions:
 - Watchdog (in monitoring/) monitors the scanner input folder for new PDFs.
 - WhiteNoise serves static files efficiently without a separate nginx in development.
 """
+import json
 import os
 from pathlib import Path
 
@@ -192,7 +193,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Directories used by the watchdog monitor and OCR tasks.
 # ==============================================================================
 
-SCANNER_INPUT_DIR = config('SCANNER_INPUT_DIR', default='/entrada_canhotos')
+def _parse_scanner_dirs(value: str) -> list:
+    """Parse SCANNER_INPUT_DIRS: comma-separated string or JSON array."""
+    if not value:
+        return ['/entrada_canhotos']
+    value = value.strip()
+    if value.startswith('['):
+        return json.loads(value)
+    return [d.strip() for d in value.split(',') if d.strip()]
+
+
+SCANNER_INPUT_DIRS = _parse_scanner_dirs(
+    config('SCANNER_INPUT_DIRS', default='/entrada_canhotos')
+)
 SCANNER_PROCESSED_DIR = config('SCANNER_PROCESSED_DIR', default='/processados')
 SCANNER_ERROR_DIR = config('SCANNER_ERROR_DIR', default='/erro')
 
