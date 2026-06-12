@@ -119,12 +119,8 @@ if (-not (Test-Path "$REDIS_DIR\redis-server.exe")) {
 Write-Step "Instalando Tesseract OCR"
 $tesseractPath = "C:\Program Files\Tesseract-OCR\tesseract.exe"
 if (-not (Test-Path $tesseractPath)) {
-    Write-Info "Baixando Tesseract OCR (UB Mannheim)..."
-    $tesseractInstaller = "$env:TEMP\tesseract-setup.exe"
-    Invoke-WebRequest -Uri $TESSERACT_URL -OutFile $tesseractInstaller -UseBasicParsing
-    Write-Info "Executando instalador do Tesseract (pode abrir janela grafica)..."
-    Start-Process -FilePath $tesseractInstaller -ArgumentList "/SILENT" -Wait
-    Remove-Item $tesseractInstaller -ErrorAction SilentlyContinue
+    Write-Info "Instalando Tesseract via Chocolatey..."
+    choco install tesseract -y
     Write-OK "Tesseract instalado"
 } else {
     Write-OK "Tesseract ja instalado"
