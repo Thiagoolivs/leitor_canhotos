@@ -90,10 +90,13 @@ Write-Step "Criando banco de dados"
 $env:PGPASSWORD = "leitor2024"
 $pgBin = "C:\Program Files\PostgreSQL\15\bin"
 if (Test-Path "$pgBin\psql.exe") {
-    Write-Info "Criando usuario e banco leitor_canhotos..."
+    Write-Info "Criando usuario e banco leitor_canhotos (ignorado se ja existir)..."
+    # Use IF NOT EXISTS equivalents — errors on existing objects are expected and ignored
+    $ErrorActionPreference = "Continue"
     & "$pgBin\psql.exe" -U postgres -c "CREATE USER leitor_canhotos WITH PASSWORD 'leitor2024';" 2>$null
     & "$pgBin\psql.exe" -U postgres -c "CREATE DATABASE leitor_canhotos OWNER leitor_canhotos;" 2>$null
     & "$pgBin\psql.exe" -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE leitor_canhotos TO leitor_canhotos;" 2>$null
+    $ErrorActionPreference = "Stop"
     Write-OK "Banco de dados configurado"
 } else {
     Write-Info "psql nao encontrado em $pgBin, tente adicionar ao PATH manualmente"
