@@ -20,12 +20,17 @@ app = Celery('leitor_canhotos')
 # the configuration object to child processes.
 app.config_from_object('django.conf:settings', namespace='CELERY')
 
-# Autodiscover tasks from all installed Django apps and from the tasks/ directory.
+# Autodiscover tasks from installed Django apps.
 app.autodiscover_tasks([
     'apps.notas',
     'apps.canhotos',
-    'tasks',
 ])
+
+# tasks/ocr_tasks.py lives outside any Django app so autodiscover won't find it.
+# Force-import the module so Celery registers processar_arquivo / reprocessar_canhoto.
+@app.on_after_configure.connect
+def import_ocr_tasks(sender, **kwargs):
+    import tasks.ocr_tasks  # noqa: F401
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):
