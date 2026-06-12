@@ -209,6 +209,14 @@ SCANNER_INPUT_DIRS = _parse_scanner_dirs(
 SCANNER_PROCESSED_DIR = config('SCANNER_PROCESSED_DIR', default='/processados')
 SCANNER_ERROR_DIR = config('SCANNER_ERROR_DIR', default='/erro')
 
+# Tesseract executable path (overridable via env for Windows)
+import pytesseract as _pytesseract
+_tesseract_cmd = config('TESSERACT_CMD', default='tesseract')
+_pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd
+
+# Poppler path for pdf2image (needed on Windows)
+POPPLER_PATH = config('POPPLER_PATH', default=None) or None
+
 # Regex patterns for extracting Brazilian invoice (Nota Fiscal) numbers from OCR text.
 # Ordered from most specific to least specific to minimize false positives.
 NOTA_NUMBER_PATTERNS = [
