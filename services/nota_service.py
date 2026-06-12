@@ -7,6 +7,7 @@ Architecture:
 - Uses NotaFiscalRepository for all database access.
 """
 import logging
+from datetime import date
 from typing import Optional
 
 from django.db import IntegrityError
@@ -162,6 +163,24 @@ class NotaService:
             nota_id, status,
         )
         return nota_atualizada
+
+    def registrar_nota_escaneada(self, numero: str, arquivo_path: str) -> NotaFiscal:
+        """
+        Register or update a NotaFiscal from a scanned invoice file.
+        If nota already exists, just log and return it (idempotent).
+        """
+        numero_formatado = formatar_numero_nota(numero)
+        nota = self.nota_repo.buscar_por_numero(numero_formatado)
+        if nota:
+            self.logger.info('NotaFiscal %s ja existe (id=%s), ignorando duplicata', numero_formatado, nota.id)
+            return nota
+        nota = self.nota_repo.criar(
+            numero=numero_formatado,
+            data_emissao=date.today(),
+            status=StatusNota.AGUARDANDO_CANHOTO,
+        )
+        self.logger.info('NotaFiscal criada automaticamente: numero=%s id=%s', numero_formatado, nota.id)
+        return nota
 
     def buscar_nota(self, numero: str) -> Optional[NotaFiscal]:
         """

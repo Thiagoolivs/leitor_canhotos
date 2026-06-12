@@ -1,9 +1,12 @@
 """
-Celery tasks for OCR processing of canhoto files.
+Celery tasks for OCR processing of scanner files.
 
 Architecture:
-- processar_canhoto: main task triggered by the watchdog monitor for new files.
-  Creates a Canhoto DB record, runs OCR, attempts conciliation, and moves the file.
+- processar_arquivo: main task triggered by the watchdog monitor for new files.
+  Handles both 'nota' (scanned invoices) and 'canhoto' (signed stubs) types.
+  For tipo='nota': OCR extracts NF number -> creates NotaFiscal with AGUARDANDO_CANHOTO.
+  For tipo='canhoto': OCR extracts NF number -> finds NotaFiscal -> links Canhoto -> FINALIZADO.
+- processar_canhoto: legacy task kept for backwards compatibility (wraps processar_arquivo).
 - reprocessar_canhoto: re-runs OCR on an existing Canhoto (triggered from UI or admin).
 
 Both tasks use exponential backoff retries and move files to /erro/ on max retries.
@@ -16,6 +19,105 @@ from celery import shared_task
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    name='tasks.ocr_tasks.processar_arquivo',
+)
+def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
+    """
+    Process a scanned file from the scanner.
+
+    tipo='nota'    -> OCR extracts NF number -> creates NotaFiscal with AGUARDANDO_CANHOTO
+    tipo='canhoto' -> OCR extracts NF number -> finds NotaFiscal -> links Canhoto -> FINALIZADO
+    """
+    from services.ocr_service import OCRService
+    from services.nota_service import NotaService
+    from services.canhoto_service import CanhotoService
+    from services.conciliacao_service import ConciliacaoService
+
+    _logger = logging.getLogger(__name__)
+    caminho = Path(caminho_arquivo)
+
+    _logger.info('Iniciando processamento [%s]: %s', tipo.upper(), caminho.name)
+
+    ocr_service = OCRService()
+    canhoto_service = CanhotoService()
+
+    try:
+        resultado_ocr = ocr_service.processar_arquivo(caminho_arquivo)
+        numero_nota = resultado_ocr.get('numero_nota')
+
+        if tipo == 'nota':
+            # Create NotaFiscal from scanned invoice
+            if not numero_nota:
+                novo_caminho = canhoto_service.mover_para_erro(caminho_arquivo, 'numero_nota_nao_detectado')
+                _logger.warning('[NOTA] Numero nao detectado em %s -> movido para erro', caminho.name)
+                return {'status': 'erro', 'motivo': 'numero_nao_detectado', 'arquivo': novo_caminho}
+
+            nota_service = NotaService()
+            nota = nota_service.registrar_nota_escaneada(
+                numero=numero_nota,
+                arquivo_path=caminho_arquivo,
+            )
+            novo_caminho = canhoto_service.mover_para_processados(caminho_arquivo, numero_nota)
+            _logger.info('[NOTA] NF %s registrada (id=%s) -> %s', numero_nota, nota.id, novo_caminho)
+            return {'status': 'sucesso', 'tipo': 'nota', 'numero': numero_nota, 'nota_id': nota.id}
+
+        else:  # tipo == 'canhoto'
+            canhoto = None
+            try:
+                canhoto = _criar_canhoto_processando(caminho_arquivo)
+
+                if not numero_nota:
+                    _finalizar_canhoto_erro(canhoto, 'numero_nota_nao_detectado_no_ocr')
+                    novo_caminho = canhoto_service.mover_para_erro(caminho_arquivo, 'ocr_sem_numero')
+                    _logger.warning('[CANHOTO] Numero nao detectado em %s', caminho.name)
+                    return {'status': 'erro', 'motivo': 'numero_nao_detectado'}
+
+                conciliacao_service = ConciliacaoService()
+                resultado = conciliacao_service.conciliar(canhoto.id, numero_nota)
+                novo_caminho = canhoto_service.mover_para_processados(caminho_arquivo, numero_nota)
+                _logger.info('[CANHOTO] Conciliado NF %s -> %s', numero_nota, novo_caminho)
+                return {'status': 'sucesso', 'tipo': 'canhoto', 'numero': numero_nota, 'conciliado': resultado.sucesso}
+
+            except Exception as exc:
+                if canhoto:
+                    _finalizar_canhoto_erro(canhoto, str(exc))
+                novo_caminho = canhoto_service.mover_para_erro(caminho_arquivo, str(exc))
+                raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+
+    except Exception as exc:
+        _logger.error('[%s] Erro ao processar %s: %s', tipo.upper(), caminho.name, exc, exc_info=True)
+        try:
+            canhoto_service.mover_para_erro(caminho_arquivo, str(exc))
+        except Exception:
+            pass
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+        return {'status': 'erro', 'motivo': str(exc)}
+
+
+def _criar_canhoto_processando(caminho_arquivo: str):
+    """Helper: create Canhoto record with PROCESSANDO status."""
+    from repositories.canhoto_repository import CanhotoRepository
+    from apps.canhotos.models import StatusProcessamento
+    repo = CanhotoRepository()
+    return repo.criar(
+        arquivo=caminho_arquivo,
+        status_processamento=StatusProcessamento.PROCESSANDO,
+    )
+
+
+def _finalizar_canhoto_erro(canhoto, mensagem: str) -> None:
+    """Helper: update Canhoto to ERRO status."""
+    from repositories.canhoto_repository import CanhotoRepository
+    from apps.canhotos.models import StatusProcessamento
+    repo = CanhotoRepository()
+    repo.atualizar(canhoto, status_processamento=StatusProcessamento.ERRO, erro_mensagem=mensagem)
 
 
 @shared_task(
