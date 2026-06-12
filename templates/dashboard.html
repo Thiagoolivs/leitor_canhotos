@@ -1,0 +1,320 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard — Leitor de Canhotos{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-speedometer2 me-2"></i>Dashboard
+  </h2>
+  <span class="text-muted small" id="last-update">Carregando...</span>
+</div>
+
+<!-- KPI Cards Row 1 -->
+<div class="row g-3 mb-4" id="kpi-cards">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <div class="rounded-circle bg-primary bg-opacity-10 p-2 me-3">
+            <i class="bi bi-file-earmark-text text-primary fs-5"></i>
+          </div>
+          <span class="text-muted small">Total de Notas</span>
+        </div>
+        <div class="fs-2 fw-bold" id="kpi-total">—</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100 border-start border-warning border-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <div class="rounded-circle bg-warning bg-opacity-10 p-2 me-3">
+            <i class="bi bi-hourglass-split text-warning fs-5"></i>
+          </div>
+          <span class="text-muted small">Aguardando</span>
+        </div>
+        <div class="fs-2 fw-bold text-warning" id="kpi-aguardando">—</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100 border-start border-success border-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <div class="rounded-circle bg-success bg-opacity-10 p-2 me-3">
+            <i class="bi bi-check-circle text-success fs-5"></i>
+          </div>
+          <span class="text-muted small">Finalizados</span>
+        </div>
+        <div class="fs-2 fw-bold text-success" id="kpi-finalizado">—</div>
+        <div class="small mt-1" id="kpi-tendencia"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100 border-start border-danger border-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <div class="rounded-circle bg-danger bg-opacity-10 p-2 me-3">
+            <i class="bi bi-x-circle text-danger fs-5"></i>
+          </div>
+          <span class="text-muted small">Erros</span>
+        </div>
+        <div class="fs-2 fw-bold text-danger" id="kpi-erro">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Alert KPI Cards Row 2 -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100 border-start border-warning border-4">
+      <div class="card-body d-flex align-items-center">
+        <div class="rounded-circle bg-warning bg-opacity-10 p-3 me-3">
+          <i class="bi bi-calendar-x text-warning fs-4"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Aguardando há mais de 1 mês</div>
+          <div class="fs-3 fw-bold text-warning" id="kpi-1mes">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100 border-start border-danger border-4">
+      <div class="card-body d-flex align-items-center">
+        <div class="rounded-circle bg-danger bg-opacity-10 p-3 me-3">
+          <i class="bi bi-exclamation-triangle text-danger fs-4"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Sem correspondência há mais de 3 meses</div>
+          <div class="fs-3 fw-bold text-danger" id="kpi-3meses">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h6 class="mb-0 text-muted">Distribuição de Status</h6>
+      </div>
+      <div class="card-body d-flex align-items-center justify-content-center">
+        <canvas id="chart-pizza" style="max-height: 250px;"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h6 class="mb-0 text-muted">Notas Fiscais por Mês</h6>
+      </div>
+      <div class="card-body">
+        <canvas id="chart-barras" style="max-height: 250px;"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Alerts + Activity Row -->
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h6 class="mb-0 text-muted">
+          <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+          Alertas — Aguardando há mais de 1 mês
+        </h6>
+      </div>
+      <div class="card-body p-0">
+        <div id="alertas-container">
+          <div class="text-center text-muted py-4">Carregando...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h6 class="mb-0 text-muted">
+          <i class="bi bi-clock-history me-1"></i>
+          Últimas Atividades
+        </h6>
+      </div>
+      <div class="card-body p-0">
+        <div id="atividades-container">
+          <div class="text-center text-muted py-4">Carregando...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  var POLL_INTERVAL = 30000;
+  var apiUrl = "{% url 'notas:dashboard_api' %}";
+  var chartPizza = null;
+  var chartBarras = null;
+
+  function pad(n) { return n < 10 ? '0' + n : n; }
+
+  function setEl(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+
+  function renderTendencia(tendencia) {
+    var el = document.getElementById('kpi-tendencia');
+    if (!el) return;
+    if (tendencia > 0) {
+      el.innerHTML = '<span class="text-success"><i class="bi bi-arrow-up-short"></i>' + tendencia + '% vs mês anterior</span>';
+    } else if (tendencia < 0) {
+      el.innerHTML = '<span class="text-danger"><i class="bi bi-arrow-down-short"></i>' + Math.abs(tendencia) + '% vs mês anterior</span>';
+    } else {
+      el.innerHTML = '<span class="text-muted">= mês anterior</span>';
+    }
+  }
+
+  function renderAlertas(alertas) {
+    var container = document.getElementById('alertas-container');
+    if (!alertas.length) {
+      container.innerHTML = '<div class="text-center text-success py-4"><i class="bi bi-check-circle fs-3"></i><br>Nenhum alerta</div>';
+      return;
+    }
+    var rows = alertas.map(function (a) {
+      var badge = a.critico
+        ? '<span class="badge bg-danger">' + a.dias + ' dias</span>'
+        : '<span class="badge bg-warning text-dark">' + a.dias + ' dias</span>';
+      return '<tr class="' + (a.critico ? 'table-danger' : '') + '">' +
+        '<td class="ps-3"><a href="/notas/' + a.numero + '/">NF ' + a.numero + '</a></td>' +
+        '<td class="text-muted small">' + a.created_at + '</td>' +
+        '<td class="pe-3 text-end">' + badge + '</td>' +
+        '</tr>';
+    }).join('');
+    container.innerHTML = '<table class="table table-sm table-hover mb-0"><tbody>' + rows + '</tbody></table>';
+  }
+
+  function renderAtividades(atividades) {
+    var container = document.getElementById('atividades-container');
+    if (!atividades.length) {
+      container.innerHTML = '<div class="text-center text-muted py-4">Nenhuma atividade</div>';
+      return;
+    }
+    var statusBadge = {
+      'AGUARDANDO_CANHOTO': '<span class="badge bg-warning text-dark">Aguardando</span>',
+      'FINALIZADO': '<span class="badge bg-success">Finalizado</span>',
+      'ERRO': '<span class="badge bg-danger">Erro</span>',
+    };
+    var rows = atividades.map(function (a) {
+      return '<tr>' +
+        '<td class="ps-3"><a href="/notas/' + a.numero + '/">NF ' + a.numero + '</a></td>' +
+        '<td>' + (statusBadge[a.status] || a.status) + '</td>' +
+        '<td class="pe-3 text-muted small">' + a.updated_at + '</td>' +
+        '</tr>';
+    }).join('');
+    container.innerHTML = '<table class="table table-sm table-hover mb-0"><tbody>' + rows + '</tbody></table>';
+  }
+
+  function initCharts(pizza, barras) {
+    var ctxPizza = document.getElementById('chart-pizza').getContext('2d');
+    chartPizza = new Chart(ctxPizza, {
+      type: 'doughnut',
+      data: {
+        labels: pizza.labels,
+        datasets: [{
+          data: pizza.data,
+          backgroundColor: pizza.colors,
+          borderWidth: 2,
+          borderColor: '#fff',
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+
+    var ctxBarras = document.getElementById('chart-barras').getContext('2d');
+    chartBarras = new Chart(ctxBarras, {
+      type: 'bar',
+      data: {
+        labels: barras.labels,
+        datasets: [{
+          label: 'Notas Fiscais',
+          data: barras.data,
+          backgroundColor: 'rgba(13, 110, 253, 0.7)',
+          borderColor: 'rgba(13, 110, 253, 1)',
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+  }
+
+  function updateCharts(pizza, barras) {
+    if (chartPizza) {
+      chartPizza.data.datasets[0].data = pizza.data;
+      chartPizza.update();
+    }
+    if (chartBarras) {
+      chartBarras.data.labels = barras.labels;
+      chartBarras.data.datasets[0].data = barras.data;
+      chartBarras.update();
+    }
+  }
+
+  var firstLoad = true;
+
+  function fetchDashboard() {
+    fetch(apiUrl, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var k = data.kpis;
+        setEl('kpi-total', k.total);
+        setEl('kpi-aguardando', k.aguardando);
+        setEl('kpi-finalizado', k.finalizado);
+        setEl('kpi-erro', k.erro);
+        setEl('kpi-1mes', k.aguardando_mais_1_mes);
+        setEl('kpi-3meses', k.sem_correspondencia_3_meses);
+        renderTendencia(k.tendencia);
+        renderAlertas(data.alertas);
+        renderAtividades(data.atividades);
+
+        if (firstLoad) {
+          initCharts(data.chart_pizza, data.chart_barras);
+          firstLoad = false;
+        } else {
+          updateCharts(data.chart_pizza, data.chart_barras);
+        }
+
+        var now = new Date();
+        setEl('last-update', 'Atualizado às ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds()));
+      })
+      .catch(function () {
+        setEl('last-update', 'Erro ao atualizar');
+      });
+  }
+
+  fetchDashboard();
+  setInterval(fetchDashboard, POLL_INTERVAL);
+})();
+</script>
+{% endblock %}
