@@ -1,0 +1,118 @@
+version: '3.9'
+
+# =============================================================================
+# LEITOR DE CANHOTOS — Docker Compose
+#
+# Pastas do scanner configuradas via .env:
+#   SCANNER_HOST_DIR_1=M:\Nota_Fiscal\NF
+#   SCANNER_HOST_DIR_2=M:\Nota_Fiscal\Filial2  (opcional)
+#
+# Para subir tudo:
+#   docker-compose up -d
+# =============================================================================
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: leitor_canhotos
+      POSTGRES_USER: leitor_canhotos
+      POSTGRES_PASSWORD: leitor2024
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leitor_canhotos -d leitor_canhotos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    restart: unless-stopped
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 120
+    volumes:
+      - .:/app
+      # Pasta principal do scanner: M:\Nota_Fiscal\NF
+      - "${SCANNER_HOST_DIR_1:-M:\\Nota_Fiscal\\NF}:/entrada_canhotos"
+      # Descomente para adicionar mais pastas (lembre de adicionar nos servicos celery e monitor tambem):
+      # - "${SCANNER_HOST_DIR_2:-M:\\Nota_Fiscal\\Filial2}:/entrada_canhotos_2"
+      # - "${SCANNER_HOST_DIR_3:-M:\\Nota_Fiscal\\SP}:/entrada_canhotos_3"
+      - leitor_processados:/processados
+      - leitor_erro:/erro
+      - leitor_logs:/app/logs
+      - leitor_media:/app/media
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery:
+    build: .
+    restart: unless-stopped
+    command: celery -A config worker -l info --pool=solo
+    volumes:
+      - .:/app
+      - "${SCANNER_HOST_DIR_1:-M:\\Nota_Fiscal\\NF}:/entrada_canhotos"
+      # - "${SCANNER_HOST_DIR_2:-M:\\Nota_Fiscal\\Filial2}:/entrada_canhotos_2"
+      # - "${SCANNER_HOST_DIR_3:-M:\\Nota_Fiscal\\SP}:/entrada_canhotos_3"
+      - leitor_processados:/processados
+      - leitor_erro:/erro
+      - leitor_logs:/app/logs
+      - leitor_media:/app/media
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  monitor:
+    build: .
+    restart: unless-stopped
+    command: python monitoring/scanner_monitor.py
+    volumes:
+      - .:/app
+      - "${SCANNER_HOST_DIR_1:-M:\\Nota_Fiscal\\NF}:/entrada_canhotos"
+      # Para monitorar mais pastas, adicione os volumes aqui E no .env:
+      # - "${SCANNER_HOST_DIR_2:-M:\\Nota_Fiscal\\Filial2}:/entrada_canhotos_2"
+      # - "${SCANNER_HOST_DIR_3:-M:\\Nota_Fiscal\\SP}:/entrada_canhotos_3"
+      - leitor_processados:/processados
+      - leitor_erro:/erro
+      - leitor_logs:/app/logs
+      - leitor_media:/app/media
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  leitor_logs:
+  leitor_media:
+  leitor_processados:
+  leitor_erro:
