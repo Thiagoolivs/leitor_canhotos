@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Notas Fiscais - Leitor de Canhotos{% endblock %}
+{% block nav_notas %}active{% endblock %}
+
+{% block content %}
+<div class="row mb-3 align-items-center">
+  <div class="col">
+    <h2 class="mb-0"><i class="bi bi-receipt me-2"></i>Notas Fiscais</h2>
+    <small class="text-muted">{{ total_count }} nota(s) encontrada(s)</small>
+  </div>
+  <div class="col-auto">
+    <a href="{% url 'notas:criar' %}" class="btn btn-primary">
+      <i class="bi bi-plus-circle me-1"></i>Nova Nota
+    </a>
+  </div>
+</div>
+
+<!-- Filter Form -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white">
+    <h6 class="mb-0 text-muted"><i class="bi bi-funnel me-1"></i>Filtros</h6>
+  </div>
+  <div class="card-body">
+    <form method="get" id="filter-form">
+      <div class="row g-2">
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Número da Nota</label>
+          {{ filterset.form.numero }}
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Data Emissão (de)</label>
+          {{ filterset.form.data_emissao__gte }}
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Data Emissão (até)</label>
+          {{ filterset.form.data_emissao__lte }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Categoria</label>
+          {{ filterset.form.categoria }}
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Status</label>
+          {{ filterset.form.status }}
+        </div>
+      </div>
+      <div class="row mt-2">
+        <div class="col">
+          <button type="submit" class="btn btn-sm btn-outline-primary me-2">
+            <i class="bi bi-search me-1"></i>Filtrar
+          </button>
+          <a href="{% url 'notas:lista' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i>Limpar
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    {% if notas %}
+    <div class="table-responsive">
+      <table class="table table-hover table-striped mb-0 align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Número</th>
+            <th>Data Emissão</th>
+            <th>Categoria</th>
+            <th>Status</th>
+            <th>Canhoto</th>
+            <th>Criado em</th>
+            <th class="text-center">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for nota in notas %}
+          <tr>
+            <td><strong>{{ nota.numero }}</strong></td>
+            <td>{{ nota.data_emissao|date:"d/m/Y" }}</td>
+            <td>{{ nota.categoria|default:"-" }}</td>
+            <td>
+              {% if nota.status == "AGUARDANDO_CANHOTO" %}
+                <span class="badge-status badge-aguardando">Aguardando Canhoto</span>
+              {% elif nota.status == "FINALIZADO" %}
+                <span class="badge-status badge-finalizado">Finalizado</span>
+              {% elif nota.status == "ERRO" %}
+                <span class="badge-status badge-erro">Erro</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ nota.status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if nota.canhoto %}
+                <a href="{% url 'canhotos:detalhe' nota.canhoto.pk %}" class="text-success">
+                  <i class="bi bi-check-circle-fill"></i> Vinculado
+                </a>
+              {% else %}
+                <span class="text-muted"><i class="bi bi-dash-circle"></i> Sem canhoto</span>
+              {% endif %}
+            </td>
+            <td>{{ nota.created_at|date:"d/m/Y H:i" }}</td>
+            <td class="text-center">
+              <a href="{% url 'notas:detalhe' nota.pk %}"
+                 class="btn btn-sm btn-outline-primary me-1"
+                 title="Detalhes">
+                <i class="bi bi-eye"></i>
+              </a>
+              <a href="{% url 'notas:editar' nota.pk %}"
+                 class="btn btn-sm btn-outline-secondary"
+                 title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-inbox display-4"></i>
+      <p class="mt-2">Nenhuma nota fiscal encontrada.</p>
+      <a href="{% url 'notas:criar' %}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-circle me-1"></i>Cadastrar Nota Fiscal
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if page_obj.has_other_pages %}
+<nav class="mt-3" aria-label="Paginação">
+  <ul class="pagination justify-content-center">
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?page=1{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">
+          <i class="bi bi-chevron-double-left"></i>
+        </a>
+      </li>
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+      </li>
+    {% endif %}
+
+    {% for num in page_obj.paginator.page_range %}
+      {% if page_obj.number == num %}
+        <li class="page-item active">
+          <span class="page-link">{{ num }}</span>
+        </li>
+      {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ num }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">{{ num }}</a>
+        </li>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </li>
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">
+          <i class="bi bi-chevron-double-right"></i>
+        </a>
+      </li>
+    {% endif %}
+  </ul>
+  <p class="text-center text-muted small">
+    Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+    &mdash; {{ page_obj.paginator.count }} registro(s) no total
+  </p>
+</nav>
+{% endif %}
+{% endblock %}
