@@ -72,6 +72,9 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
             try:
                 canhoto = _criar_canhoto_processando(caminho_arquivo)
 
+                # Salva texto OCR mesmo que numero nao seja detectado
+                _salvar_texto_ocr(canhoto, resultado_ocr.get('texto', ''))
+
                 if not numero_nota:
                     _finalizar_canhoto_erro(canhoto, 'numero_nota_nao_detectado_no_ocr')
                     novo_caminho = canhoto_service.mover_para_erro(caminho_arquivo, 'ocr_sem_numero')
@@ -99,6 +102,13 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
         if self.request.retries < self.max_retries:
             raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
         return {'status': 'erro', 'motivo': str(exc)}
+
+
+def _salvar_texto_ocr(canhoto, texto: str) -> None:
+    """Helper: persist extracted OCR text on the Canhoto record."""
+    if texto:
+        from repositories.canhoto_repository import CanhotoRepository
+        CanhotoRepository().atualizar(canhoto, texto_ocr=texto)
 
 
 def _criar_canhoto_processando(caminho_arquivo: str):
@@ -216,8 +226,8 @@ def processar_canhoto(self, caminho_arquivo: str) -> dict:
                 'mensagem': f'OCR falhou: {ocr_erro}',
             }
 
-        # Update detected number
-        canhoto_repo.atualizar(canhoto, numero_detectado=numero_nota or '')
+        # Update detected number and persist OCR text
+        canhoto_repo.atualizar(canhoto, numero_detectado=numero_nota or '', texto_ocr=texto_ocr)
 
         # -- Step 4: Attempt conciliation if invoice number was found
         if numero_nota:
@@ -402,6 +412,7 @@ def reprocessar_canhoto(canhoto_id: int) -> dict:
     try:
         resultado_ocr = ocr_service.processar_arquivo(str(caminho))
         numero_nota = resultado_ocr.get('numero_nota')
+        texto_ocr = resultado_ocr.get('texto', '')
         ocr_sucesso = resultado_ocr.get('sucesso', False)
         ocr_erro = resultado_ocr.get('erro')
 
@@ -411,6 +422,7 @@ def reprocessar_canhoto(canhoto_id: int) -> dict:
                 status_processamento=StatusProcessamento.ERRO,
                 erro_mensagem=ocr_erro or 'Falha no OCR',
                 numero_detectado='',
+                texto_ocr=texto_ocr,
             )
             return {
                 'sucesso': False,
@@ -419,7 +431,7 @@ def reprocessar_canhoto(canhoto_id: int) -> dict:
                 'mensagem': f'OCR falhou: {ocr_erro}',
             }
 
-        canhoto_repo.atualizar(canhoto, numero_detectado=numero_nota or '')
+        canhoto_repo.atualizar(canhoto, numero_detectado=numero_nota or '', texto_ocr=texto_ocr)
 
         if numero_nota:
             # If canhoto already linked to a nota, desvincular first

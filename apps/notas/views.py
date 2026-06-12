@@ -160,6 +160,7 @@ class DashboardAPIView(View):
         aguardando = NotaFiscal.objects.filter(status=StatusNota.AGUARDANDO_CANHOTO).count()
         finalizado = NotaFiscal.objects.filter(status=StatusNota.FINALIZADO).count()
         erro = NotaFiscal.objects.filter(status=StatusNota.ERRO).count()
+        canhotos_sem_nota = Canhoto.objects.filter(nota__isnull=True).count()
 
         # Alertas
         aguardando_mais_1_mes = NotaFiscal.objects.filter(
@@ -240,6 +241,7 @@ class DashboardAPIView(View):
                 'erro': erro,
                 'aguardando_mais_1_mes': aguardando_mais_1_mes,
                 'sem_correspondencia_3_meses': sem_correspondencia_3_meses,
+                'canhotos_sem_nota': canhotos_sem_nota,
                 'tendencia': tendencia,
             },
             'chart_pizza': {

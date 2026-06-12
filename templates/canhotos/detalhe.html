@@ -126,40 +126,82 @@
     </div>
   </div>
 
-  <!-- File Preview -->
+  <!-- File Preview + OCR Text -->
   <div class="col-md-7">
+    <!-- Pré-visualização -->
     <div class="card shadow-sm mb-4">
-      <div class="card-header bg-white">
+      <div class="card-header bg-white d-flex align-items-center justify-content-between">
         <h5 class="mb-0"><i class="bi bi-eye me-2"></i>Pré-visualização do Arquivo</h5>
+        {% if canhoto.arquivo %}
+        <a href="{{ canhoto.arquivo.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Abrir em nova aba
+        </a>
+        {% endif %}
       </div>
-      <div class="card-body">
+      <div class="card-body p-0">
         {% if canhoto.arquivo %}
           {% if canhoto.is_pdf %}
             <iframe src="{{ canhoto.arquivo.url }}"
                     width="100%"
-                    height="600"
-                    style="border: 1px solid #dee2e6; border-radius: 4px;"
+                    height="620"
+                    style="border: none; border-radius: 0 0 4px 4px; display: block;"
                     title="Canhoto PDF"></iframe>
-            <div class="mt-2 text-center">
-              <a href="{{ canhoto.arquivo.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-box-arrow-up-right me-1"></i>Abrir em nova aba
-              </a>
-            </div>
           {% else %}
-            <img src="{{ canhoto.arquivo.url }}"
-                 alt="Imagem do canhoto"
-                 class="img-fluid rounded border"
-                 style="max-height: 600px; display: block; margin: 0 auto;">
-            <div class="mt-2 text-center">
-              <a href="{{ canhoto.arquivo.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-zoom-in me-1"></i>Ver em tamanho original
-              </a>
+            <div class="p-3 text-center">
+              <img src="{{ canhoto.arquivo.url }}"
+                   alt="Imagem do canhoto"
+                   class="img-fluid rounded border"
+                   style="max-height: 600px; cursor: zoom-in;"
+                   onclick="window.open(this.src,'_blank')">
             </div>
           {% endif %}
         {% else %}
           <div class="text-center py-5 text-muted">
             <i class="bi bi-file-earmark-x display-4"></i>
             <p class="mt-2">Arquivo não disponível para pré-visualização.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Texto extraído pelo OCR -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-white d-flex align-items-center justify-content-between">
+        <h6 class="mb-0"><i class="bi bi-file-text me-2"></i>Texto Extraído pelo OCR</h6>
+        {% if canhoto.texto_ocr %}
+        <button class="btn btn-sm btn-outline-secondary"
+                onclick="var el=document.getElementById('ocr-text'); el.style.display = el.style.display==='none' ? 'block' : 'none';">
+          <i class="bi bi-chevron-down"></i> Expandir/Recolher
+        </button>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if canhoto.texto_ocr %}
+          {% if canhoto.numero_detectado %}
+          <div class="alert alert-success rounded-0 mb-0 py-2 px-3 border-0">
+            <i class="bi bi-check-circle-fill me-1"></i>
+            Número detectado: <strong>{{ canhoto.numero_detectado }}</strong>
+          </div>
+          {% else %}
+          <div class="alert alert-warning rounded-0 mb-0 py-2 px-3 border-0">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Nenhum número de nota foi encontrado no texto abaixo. Verifique manualmente.
+          </div>
+          {% endif %}
+          <div id="ocr-text" style="display: none;">
+            <pre class="p-3 mb-0 bg-light rounded-bottom"
+                 style="font-size: 0.78rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;">{{ canhoto.texto_ocr }}</pre>
+          </div>
+        {% elif canhoto.status_processamento == "ERRO" %}
+          <div class="text-center py-4 text-danger">
+            <i class="bi bi-x-octagon fs-4"></i>
+            <p class="mt-2 mb-0 small">OCR falhou — nenhum texto disponível.<br>
+            Use o botão <strong>Reprocessar OCR</strong> para tentar novamente.</p>
+          </div>
+        {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi bi-hourglass-split fs-4"></i>
+            <p class="mt-2 mb-0 small">Aguardando processamento OCR.</p>
           </div>
         {% endif %}
       </div>

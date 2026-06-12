@@ -20,13 +20,17 @@
   <div class="card-body">
     <form method="get" id="filter-form">
       <div class="row g-2">
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label small fw-semibold">Número Detectado</label>
           {{ filterset.form.numero_detectado }}
         </div>
         <div class="col-md-3">
           <label class="form-label small fw-semibold">Status de Processamento</label>
           {{ filterset.form.status_processamento }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Vínculo com Nota</label>
+          {{ filterset.form.sem_vinculo }}
         </div>
         <div class="col-md-3 d-flex align-items-end">
           <div>
@@ -38,6 +42,12 @@
             </a>
           </div>
         </div>
+      </div>
+      <!-- Atalho rápido -->
+      <div class="mt-2">
+        <a href="?sem_vinculo=sim" class="btn btn-sm btn-warning">
+          <i class="bi bi-exclamation-triangle me-1"></i>Ver apenas sem nota vinculada
+        </a>
       </div>
     </form>
   </div>

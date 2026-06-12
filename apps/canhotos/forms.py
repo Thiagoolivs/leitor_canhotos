@@ -33,6 +33,13 @@ class VincularManualForm(forms.Form):
         return nota
 
 
+SEM_VINCULO_CHOICES = [
+    ('', 'Todos'),
+    ('sim', 'Sem nota vinculada'),
+    ('nao', 'Com nota vinculada'),
+]
+
+
 class CanhotoFilterSet(django_filters.FilterSet):
     numero_detectado = django_filters.CharFilter(
         lookup_expr='icontains',
@@ -45,7 +52,21 @@ class CanhotoFilterSet(django_filters.FilterSet):
         widget=forms.Select(attrs={'class': 'form-select'}),
         empty_label=None,
     )
+    sem_vinculo = django_filters.ChoiceFilter(
+        choices=SEM_VINCULO_CHOICES,
+        label='Vínculo',
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        empty_label=None,
+        method='filtrar_vinculo',
+    )
+
+    def filtrar_vinculo(self, queryset, name, value):
+        if value == 'sim':
+            return queryset.filter(nota__isnull=True)
+        if value == 'nao':
+            return queryset.filter(nota__isnull=False)
+        return queryset
 
     class Meta:
         model = Canhoto
-        fields = ['numero_detectado', 'status_processamento']
+        fields = ['numero_detectado', 'status_processamento', 'sem_vinculo']
