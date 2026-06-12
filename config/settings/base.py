@@ -230,8 +230,12 @@ NOTA_NUMBER_PATTERNS = [
 # ==============================================================================
 # LOGGING
 # Structured log format: timestamp | level | module | message
-# Handlers: rotating file in /app/logs/ and console output.
+# Handlers: rotating file in logs/ and console output.
 # ==============================================================================
+
+# Ensure log directory exists before Django tries to open log files
+_LOGS_DIR = Path(config('LOGS_DIR', default=str(BASE_DIR / 'logs')))
+_LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 LOGGING = {
     'version': 1,
@@ -252,14 +256,14 @@ LOGGING = {
         },
         'file': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(config('LOGS_DIR', default='/app/logs'), 'leitor_canhotos.log'),
+            'filename': os.path.join(config('LOGS_DIR', default=str(BASE_DIR / 'logs')), 'leitor_canhotos.log'),
             'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'backupCount': 5,
             'formatter': 'structured',
         },
         'error_file': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(config('LOGS_DIR', default='/app/logs'), 'errors.log'),
+            'filename': os.path.join(config('LOGS_DIR', default=str(BASE_DIR / 'logs')), 'errors.log'),
             'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'backupCount': 5,
             'formatter': 'structured',
