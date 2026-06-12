@@ -224,8 +224,31 @@ import pytesseract as _pytesseract
 _tesseract_cmd = config('TESSERACT_CMD', default='tesseract')
 _pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd
 
-# Poppler path for pdf2image (needed on Windows)
-POPPLER_PATH = config('POPPLER_PATH', default=None) or None
+# Poppler path for pdf2image (needed on Windows).
+# On Windows, backslashes in .env values can be tricky; we normalise the path
+# and fall back to common install locations if the configured path does not exist.
+def _resolve_poppler_path() -> 'str | None':
+    import os as _os
+    raw = config('POPPLER_PATH', default='') or ''
+    # python-decouple reads .env literally, but backslash-escapes can mangle paths.
+    # Normalise separators just in case.
+    raw = raw.strip().replace('/', _os.sep).replace('\\', _os.sep)
+    if raw and Path(raw).is_dir():
+        return raw
+    # Auto-detect common Windows install locations
+    candidates = [
+        r'C:\poppler\bin',
+        r'C:\poppler\Library\bin',
+        r'C:\Program Files\poppler\bin',
+        r'C:\Program Files (x86)\poppler\bin',
+    ]
+    for candidate in candidates:
+        if Path(candidate).is_dir():
+            return candidate
+    # Let pdf2image search PATH (works on Linux/Docker where poppler is in PATH)
+    return None
+
+POPPLER_PATH = _resolve_poppler_path()
 
 # Regex patterns for extracting Brazilian invoice (Nota Fiscal) numbers from OCR text.
 # Ordered from most specific to least specific to minimize false positives.

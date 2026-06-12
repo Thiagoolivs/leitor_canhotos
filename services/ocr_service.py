@@ -71,6 +71,7 @@ class OCRService:
         try:
             self.logger.info('Convertendo PDF para imagens: %s', caminho_pdf)
             poppler_path = getattr(settings, 'POPPLER_PATH', None)
+            self.logger.info('POPPLER_PATH configurado: %r', poppler_path)
             convert_kwargs = dict(dpi=300, fmt='png', thread_count=1)
             if poppler_path:
                 convert_kwargs['poppler_path'] = poppler_path
@@ -79,6 +80,11 @@ class OCRService:
                 **convert_kwargs,
             )
         except (PDFInfoNotInstalledError, PDFPageCountError, Exception) as exc:
+            self.logger.error(
+                'Erro ao converter PDF. POPPLER_PATH=%r. '
+                'Verifique se o Poppler esta instalado e se o caminho esta correto no .env.',
+                poppler_path,
+            )
             raise OCRException(
                 f'Falha ao converter PDF para imagem: {exc}',
                 caminho_arquivo=caminho_pdf,
