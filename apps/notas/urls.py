@@ -14,4 +14,5 @@ urlpatterns = [
     path('nova/', views.NotaFiscalCreateView.as_view(), name='criar'),
     path('<int:pk>/', views.NotaFiscalDetailView.as_view(), name='detalhe'),
     path('<int:pk>/editar/', views.NotaFiscalUpdateView.as_view(), name='editar'),
+    path('api/status-counts/', views.StatusCountsView.as_view(), name='status_counts'),
 ]
