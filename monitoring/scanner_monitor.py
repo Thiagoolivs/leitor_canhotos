@@ -30,7 +30,11 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Bootstrap Django before any local imports
 # ---------------------------------------------------------------------------
-sys.path.insert(0, '/app')
+# Support both Docker (/app) and Windows native (project root via __file__)
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
 
 import django  # noqa: E402
