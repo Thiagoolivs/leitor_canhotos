@@ -1,0 +1,131 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: leitor_canhotos
+      POSTGRES_USER: leitor_canhotos
+      POSTGRES_PASSWORD: leitor2024
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leitor_canhotos -d leitor_canhotos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    restart: unless-stopped
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 120
+    volumes:
+      - .:/app
+      - entrada_canhotos:/entrada_canhotos
+      - processados:/processados
+      - erro:/erro
+      - logs:/app/logs
+      - media:/app/media
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.development
+      - DATABASE_URL=postgres://leitor_canhotos:leitor2024@db:5432/leitor_canhotos
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=django-insecure-change-this-in-production-$(head -c 32 /dev/urandom | base64)
+      - DEBUG=True
+      - SCANNER_INPUT_DIR=/entrada_canhotos
+      - SCANNER_PROCESSED_DIR=/processados
+      - SCANNER_ERROR_DIR=/erro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery:
+    build: .
+    restart: unless-stopped
+    command: celery -A config worker -l info --pool=solo
+    volumes:
+      - .:/app
+      - entrada_canhotos:/entrada_canhotos
+      - processados:/processados
+      - erro:/erro
+      - logs:/app/logs
+      - media:/app/media
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.development
+      - DATABASE_URL=postgres://leitor_canhotos:leitor2024@db:5432/leitor_canhotos
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=django-insecure-change-this-in-production
+      - DEBUG=True
+      - SCANNER_INPUT_DIR=/entrada_canhotos
+      - SCANNER_PROCESSED_DIR=/processados
+      - SCANNER_ERROR_DIR=/erro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  monitor:
+    build: .
+    restart: unless-stopped
+    command: python monitoring/scanner_monitor.py
+    volumes:
+      - .:/app
+      - entrada_canhotos:/entrada_canhotos
+      - processados:/processados
+      - erro:/erro
+      - logs:/app/logs
+      - media:/app/media
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.development
+      - DATABASE_URL=postgres://leitor_canhotos:leitor2024@db:5432/leitor_canhotos
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=django-insecure-change-this-in-production
+      - DEBUG=True
+      - SCANNER_INPUT_DIR=/entrada_canhotos
+      - SCANNER_PROCESSED_DIR=/processados
+      - SCANNER_ERROR_DIR=/erro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  logs:
+  media:
+  # On Windows, map M:\Nota_Fiscal\NF to /entrada_canhotos inside the container
+  # Change the driver_opts source to your actual Windows path if needed
+  entrada_canhotos:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/m/Nota_Fiscal/NF
+  processados:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/m/Nota_Fiscal/processados
+  erro:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/m/Nota_Fiscal/erro
