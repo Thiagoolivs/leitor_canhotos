@@ -28,7 +28,7 @@ function Write-OK($msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
 function Write-Info($msg) { Write-Host "[..] $msg" -ForegroundColor Yellow }
 function Write-Err($msg) { Write-Host "[ERRO] $msg" -ForegroundColor Red }
 
-# ── 1. Verify admin ──────────────────────────────────────────────────────────
+# -- 1. Verify admin --
 Write-Step "Verificando privilegios de administrador"
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]$identity
@@ -39,28 +39,28 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 Write-OK "Rodando como administrador"
 
-# ── 2. Set execution policy ──────────────────────────────────────────────────
+# -- 2. Set execution policy --
 # Ignorado se bloqueado por politica de grupo corporativa (o script ja roda com Bypass)
 try {
     Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction Stop
     Write-OK "ExecutionPolicy configurada"
 } catch {
-    Write-Info "ExecutionPolicy nao alterada (politica de grupo ativa) — sem impacto, continuando..."
+    Write-Info "ExecutionPolicy nao alterada (politica de grupo ativa) - sem impacto, continuando..."
 }
 
-# ── 3. Install Chocolatey ────────────────────────────────────────────────────
+# -- 3. Install Chocolatey --
 Write-Step "Instalando Chocolatey (gerenciador de pacotes)"
 if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
     Write-Info "Baixando e instalando Chocolatey..."
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-    $env:PATH += ";$env:ALLUSERSPROFILE\chocolatey\bin"
+    $env:PATH += ";" + $env:ALLUSERSPROFILE + "\chocolatey\bin"
     Write-OK "Chocolatey instalado"
 } else {
     Write-OK "Chocolatey ja instalado"
 }
 
-# ── 4. Install Python 3.12 ───────────────────────────────────────────────────
+# -- 4. Install Python 3.12 --
 Write-Step "Verificando Python 3.12"
 $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
 if ($pythonCmd) {
@@ -73,7 +73,7 @@ if ($pythonCmd) {
     Write-OK "Python 3.12 instalado"
 }
 
-# ── 5. Install PostgreSQL 15 ─────────────────────────────────────────────────
+# -- 5. Install PostgreSQL 15 --
 Write-Step "Verificando PostgreSQL"
 $pgService = Get-Service -Name "postgresql*" -ErrorAction SilentlyContinue
 if ($pgService) {
@@ -85,7 +85,7 @@ if ($pgService) {
     Write-OK "PostgreSQL 15 instalado (senha do postgres: leitor2024)"
 }
 
-# ── 6. Create PostgreSQL database ────────────────────────────────────────────
+# -- 6. Create PostgreSQL database --
 Write-Step "Criando banco de dados"
 $env:PGPASSWORD = "leitor2024"
 $pgBin = "C:\Program Files\PostgreSQL\15\bin"
@@ -100,7 +100,7 @@ if (Test-Path "$pgBin\psql.exe") {
 }
 Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 
-# ── 7. Install Redis for Windows ─────────────────────────────────────────────
+# -- 7. Install Redis for Windows --
 Write-Step "Instalando Redis para Windows"
 if (-not (Test-Path "$REDIS_DIR\redis-server.exe")) {
     Write-Info "Baixando Redis $REDIS_URL ..."
@@ -115,7 +115,7 @@ if (-not (Test-Path "$REDIS_DIR\redis-server.exe")) {
     Write-OK "Redis ja encontrado em $REDIS_DIR"
 }
 
-# ── 8. Install Tesseract OCR ─────────────────────────────────────────────────
+# -- 8. Install Tesseract OCR --
 Write-Step "Instalando Tesseract OCR"
 $tesseractPath = "C:\Program Files\Tesseract-OCR\tesseract.exe"
 if (-not (Test-Path $tesseractPath)) {
@@ -138,7 +138,7 @@ if ($env:PATH -notlike "*Tesseract-OCR*") {
     Write-OK "Tesseract adicionado ao PATH"
 }
 
-# ── 9. Install Poppler (required by pdf2image) ───────────────────────────────
+# -- 9. Install Poppler (required by pdf2image) --
 Write-Step "Instalando Poppler (necessario para pdf2image)"
 $popplerDir = "C:\poppler"
 if (-not (Test-Path "$popplerDir\bin\pdftoppm.exe")) {
@@ -163,7 +163,7 @@ if ($env:PATH -notlike "*poppler*") {
     Write-OK "Poppler adicionado ao PATH"
 }
 
-# ── 10. Create virtual environment ───────────────────────────────────────────
+# -- 10. Create virtual environment --
 Write-Step "Criando ambiente virtual Python"
 Set-Location $PROJECT_ROOT
 if (-not (Test-Path "venv\Scripts\activate.bat")) {
@@ -174,14 +174,14 @@ if (-not (Test-Path "venv\Scripts\activate.bat")) {
     Write-OK "venv ja existe"
 }
 
-# ── 11. Install Python dependencies ──────────────────────────────────────────
+# -- 11. Install Python dependencies --
 Write-Step "Instalando dependencias Python"
 Write-Info "Isso pode levar alguns minutos..."
 & "venv\Scripts\pip.exe" install --upgrade pip
 & "venv\Scripts\pip.exe" install -r requirements.txt
 Write-OK "Dependencias instaladas"
 
-# ── 12. Copy .env ─────────────────────────────────────────────────────────────
+# -- 12. Copy .env --
 Write-Step "Configurando variaveis de ambiente"
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.windows.example" ".env"
@@ -194,22 +194,22 @@ if (-not (Test-Path ".env")) {
     Write-OK ".env ja existe, nao sobrescrito"
 }
 
-# ── 13. Run migrations ────────────────────────────────────────────────────────
+# -- 13. Run migrations --
 Write-Step "Executando migrations do banco de dados"
 & "venv\Scripts\python.exe" manage.py migrate
 Write-OK "Migrations aplicadas"
 
-# ── 14. Collect static files ──────────────────────────────────────────────────
+# -- 14. Collect static files --
 Write-Step "Coletando arquivos estaticos"
 & "venv\Scripts\python.exe" manage.py collectstatic --noinput
 Write-OK "Arquivos estaticos coletados"
 
-# ── 15. Create superuser ──────────────────────────────────────────────────────
+# -- 15. Create superuser --
 Write-Step "Criando superusuario"
 Write-Host "Voce sera solicitado a criar o usuario administrador do sistema." -ForegroundColor Yellow
 & "venv\Scripts\python.exe" manage.py createsuperuser
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# -- Done --
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host "   INSTALACAO CONCLUIDA COM SUCESSO!" -ForegroundColor Green
