@@ -32,7 +32,7 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
     Process a scanned file from the scanner.
 
     tipo='nota'    -> OCR extracts NF number -> creates NotaFiscal with AGUARDANDO_CANHOTO
-    tipo='canhoto' -> OCR extracts NF number -> finds NotaFiscal -> links Canhoto -> FINALIZADO
+    tipo='canhoto' -> copies to MEDIA first -> OCR on copy -> links Canhoto -> FINALIZADO
     """
     from services.ocr_service import OCRService
     from services.nota_service import NotaService
@@ -48,11 +48,10 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
     canhoto_service = CanhotoService()
 
     try:
-        resultado_ocr = ocr_service.processar_arquivo(caminho_arquivo)
-        numero_nota = resultado_ocr.get('numero_nota')
-
         if tipo == 'nota':
-            # Create NotaFiscal from scanned invoice
+            resultado_ocr = ocr_service.processar_arquivo(caminho_arquivo)
+            numero_nota = resultado_ocr.get('numero_nota')
+
             if not numero_nota:
                 novo_caminho = canhoto_service.mover_para_erro(caminho_arquivo, 'numero_nota_nao_detectado')
                 _logger.warning('[NOTA] Numero nao detectado em %s -> movido para erro', caminho.name)
@@ -73,20 +72,19 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
         else:  # tipo == 'canhoto'
             canhoto = None
             try:
-                # Copia o arquivo para MEDIA_ROOT antes de qualquer coisa
-                # para nao depender de o scanner manter o arquivo disponivel
+                # Copia para MEDIA primeiro (evita arquivo bloqueado e garante permanência)
                 canhoto, caminho_copia = _criar_canhoto_processando(caminho_arquivo)
 
-                # Roda OCR na copia permanente
-                resultado_ocr_copia = ocr_service.processar_arquivo(caminho_copia)
-                numero_nota = resultado_ocr_copia.get('numero_nota')
+                # OCR APENAS na cópia — nunca no arquivo original para não travar o scanner
+                resultado_ocr = ocr_service.processar_arquivo(caminho_copia)
+                numero_nota = resultado_ocr.get('numero_nota')
 
-                # Salva texto OCR, numero detectado e data de recebimento antes de tentar conciliar
-                _salvar_texto_ocr(canhoto, resultado_ocr_copia.get('texto', ''))
+                # Salva texto OCR, numero detectado e data de recebimento antes de conciliar
+                _salvar_texto_ocr(canhoto, resultado_ocr.get('texto', ''))
                 campos_extras = {}
                 if numero_nota:
                     campos_extras['numero_detectado'] = numero_nota
-                data_recebimento = resultado_ocr_copia.get('data_recebimento')
+                data_recebimento = resultado_ocr.get('data_recebimento')
                 if data_recebimento:
                     campos_extras['data_recebimento'] = data_recebimento
                 if campos_extras:
@@ -104,7 +102,6 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                     _logger.info('[CANHOTO] Conciliado NF %s', numero_nota)
                     return {'status': 'sucesso', 'tipo': 'canhoto', 'numero': numero_nota, 'conciliado': resultado.sucesso}
                 except Exception as exc_concil:
-                    # Nota nao encontrada ou erro de conciliacao: registra mas nao reprocessa
                     _finalizar_canhoto_erro(canhoto, str(exc_concil))
                     _logger.warning('[CANHOTO] Conciliacao falhou para NF %s: %s', numero_nota, exc_concil)
                     return {'status': 'erro', 'motivo': str(exc_concil), 'numero': numero_nota}
@@ -125,10 +122,27 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
         return {'status': 'erro', 'motivo': str(exc)}
 
 
+def _aguardar_arquivo_disponivel(caminho: 'Path', timeout: int = 60) -> None:
+    """
+    Aguarda até que o arquivo seja legível (scanner terminou de escrever).
+    Tenta abrir o arquivo em modo exclusivo a cada 3s por até `timeout` segundos.
+    """
+    import time as _time
+    prazo = _time.time() + timeout
+    while _time.time() < prazo:
+        try:
+            with open(str(caminho), 'rb') as f:
+                f.read(1024)
+            return
+        except (PermissionError, OSError):
+            logger.debug('Arquivo ainda bloqueado, aguardando: %s', caminho.name)
+            _time.sleep(3)
+    raise PermissionError(f'Arquivo ainda bloqueado pelo scanner após {timeout}s: {caminho}')
+
+
 def _copiar_para_media(caminho_arquivo: str) -> str:
     """
-    Copia o arquivo do scanner para MEDIA_ROOT/canhotos/ imediatamente,
-    garantindo que ele fique preservado mesmo que o scanner limpe a pasta.
+    Aguarda o arquivo ser liberado pelo scanner, depois copia para MEDIA_ROOT/canhotos/.
     Retorna o caminho relativo ao MEDIA_ROOT (para salvar no FileField).
     """
     import shutil
@@ -136,10 +150,13 @@ def _copiar_para_media(caminho_arquivo: str) -> str:
     from pathlib import Path
 
     origem = Path(caminho_arquivo)
+
+    # Aguarda scanner terminar de escrever o arquivo (evita WinError 32)
+    _aguardar_arquivo_disponivel(origem)
+
     destino_dir = Path(settings.MEDIA_ROOT) / 'canhotos'
     destino_dir.mkdir(parents=True, exist_ok=True)
 
-    # Evita colisão de nomes: prefixo com timestamp
     from django.utils import timezone
     ts = timezone.now().strftime('%Y%m%d_%H%M%S_%f')
     nome_destino = f"{ts}_{origem.name}"
@@ -148,7 +165,6 @@ def _copiar_para_media(caminho_arquivo: str) -> str:
     shutil.copy2(str(origem), str(destino))
     logger.info('Arquivo copiado para media: %s -> %s', origem.name, destino)
 
-    # Retorna caminho relativo ao MEDIA_ROOT para o FileField
     return str(Path('canhotos') / nome_destino)
 
 

@@ -22,28 +22,32 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Regex for extracting date fields from DANFE text
+# Regex for extracting date fields from DANFE text.
+# No DANFE o layout é em tabela: a linha do cabeçalho ("DATA DE EMISSÃO") e o valor estão
+# em linhas diferentes. Usamos DOTALL com limite de 300 chars para cobrir ambos os casos.
 _RE_DATA_EMISSAO = re.compile(
-    r'DATA\s+DE\s+EMISS[AÃ]O\s*[:\-]?\s*(\d{2}/\d{2}/\d{4})',
-    re.IGNORECASE,
+    r'DATA\s+DE\s+EMISS[AÃ]O.{0,300}?(\d{2}/\d{2}/\d{4})',
+    re.IGNORECASE | re.DOTALL,
 )
 _RE_DATA_RECEBIMENTO = re.compile(
-    r'DATA\s+DE\s+RECEBIMENTO\s*[:\-]?\s*(\d{2}/\d{2}/\d{2,4})',
-    re.IGNORECASE,
+    r'DATA\s+DE\s+RECEBIMENTO.{0,300}?(\d{2}/\d{2}/\d{2,4})',
+    re.IGNORECASE | re.DOTALL,
 )
-# Matches "NOME / RAZÃO SOCIAL" field on DANFE (the next non-empty line after the header)
+# No DANFE o OCR lê "NOME / RAZÃO SOCIAL  CNPJ / CPF  DATA DE EMISSÃO" em uma linha,
+# e o nome real do destinatário aparece na linha seguinte.
+# Então buscamos a linha que contém CNPJ/CPF e capturamos a próxima linha.
 _RE_DESTINATARIO = re.compile(
-    r'(?:DESTINAT[AÁ]RIO|NOME\s*/\s*RAZ[AÃ]O\s+SOCIAL)\s*\n?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][^\n]{3,80})',
+    r'NOME\s*/?\s*RAZ[AÃ]O\s+SOCIAL[^\n]*(?:CNPJ|CPF)[^\n]*\n\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][^\n]{5,120})',
     re.IGNORECASE,
 )
+# Valor total: cabeçalho e valor também ficam em linhas separadas no DANFE.
 _RE_VALOR_TOTAL = re.compile(
-    r'VALOR\s+TOTAL\s+(?:DA\s+)?NOTA\s+FISCAL\s*\n?\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})',
-    re.IGNORECASE,
+    r'VALOR\s+TOTAL\s+(?:DA\s+)?NOTA\s+FISCAL.{0,300}?([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})',
+    re.IGNORECASE | re.DOTALL,
 )
-# Fallback: any "VALOR TOTAL" followed by a currency amount
 _RE_VALOR_TOTAL_FALLBACK = re.compile(
-    r'VALOR\s+TOTAL\s*[:\-]?\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})',
-    re.IGNORECASE,
+    r'VALOR\s+TOTAL.{0,200}?([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})',
+    re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -223,7 +227,11 @@ class OCRService:
         m = _RE_DESTINATARIO.search(texto)
         if not m:
             return ''
-        return m.group(1).strip()[:200]
+        # A linha capturada pode ter CNPJ/CPF e data no final — pega só o nome (parte inicial)
+        linha = m.group(1).strip()
+        # Remove tudo a partir do primeiro padrão de CNPJ (XX.XXX.XXX/XXXX)
+        linha = re.sub(r'\s+\d{2}\.\d{3}\.\d{3}.*$', '', linha).strip()
+        return linha[:200] if linha else ''
 
     def extrair_valor_total(self, texto: str) -> Optional['Decimal']:
         """Extract total invoice value from DANFE OCR text. Returns Decimal or None."""
