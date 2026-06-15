@@ -78,8 +78,11 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                 resultado_ocr_copia = ocr_service.processar_arquivo(caminho_copia)
                 numero_nota = resultado_ocr_copia.get('numero_nota')
 
-                # Salva texto OCR mesmo que numero nao seja detectado
+                # Salva texto OCR e numero detectado antes de tentar conciliar
                 _salvar_texto_ocr(canhoto, resultado_ocr_copia.get('texto', ''))
+                if numero_nota:
+                    from repositories.canhoto_repository import CanhotoRepository
+                    CanhotoRepository().atualizar(canhoto, numero_detectado=numero_nota)
 
                 if not numero_nota:
                     _finalizar_canhoto_erro(canhoto, 'numero_nota_nao_detectado_no_ocr')
@@ -87,9 +90,15 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                     return {'status': 'erro', 'motivo': 'numero_nao_detectado'}
 
                 conciliacao_service = ConciliacaoService()
-                resultado = conciliacao_service.conciliar(canhoto.id, numero_nota)
-                _logger.info('[CANHOTO] Conciliado NF %s', numero_nota)
-                return {'status': 'sucesso', 'tipo': 'canhoto', 'numero': numero_nota, 'conciliado': resultado.sucesso}
+                try:
+                    resultado = conciliacao_service.conciliar(canhoto.id, numero_nota)
+                    _logger.info('[CANHOTO] Conciliado NF %s', numero_nota)
+                    return {'status': 'sucesso', 'tipo': 'canhoto', 'numero': numero_nota, 'conciliado': resultado.sucesso}
+                except Exception as exc_concil:
+                    # Nota nao encontrada ou erro de conciliacao: registra mas nao reprocessa
+                    _finalizar_canhoto_erro(canhoto, str(exc_concil))
+                    _logger.warning('[CANHOTO] Conciliacao falhou para NF %s: %s', numero_nota, exc_concil)
+                    return {'status': 'erro', 'motivo': str(exc_concil), 'numero': numero_nota}
 
             except Exception as exc:
                 if canhoto:
