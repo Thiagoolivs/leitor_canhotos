@@ -63,6 +63,7 @@
           <tr>
             <th>#</th>
             <th>Arquivo</th>
+            <th class="text-center">Pág.</th>
             <th>Número Detectado</th>
             <th>Status OCR</th>
             <th>Nota Vinculada</th>
@@ -83,6 +84,7 @@
                 <span class="text-muted">Sem arquivo</span>
               {% endif %}
             </td>
+            <td class="text-center text-muted small">{{ canhoto.pagina_numero|default:"—" }}</td>
             <td>{{ canhoto.numero_detectado|default:"—" }}</td>
             <td>
               {% if canhoto.status_processamento == "SUCESSO" %}

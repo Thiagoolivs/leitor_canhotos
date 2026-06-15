@@ -33,6 +33,11 @@
           <dt class="col-sm-5">ID</dt>
           <dd class="col-sm-7">#{{ canhoto.pk }}</dd>
 
+          {% if canhoto.pagina_numero %}
+          <dt class="col-sm-5">Página no PDF</dt>
+          <dd class="col-sm-7">{{ canhoto.pagina_numero }}</dd>
+          {% endif %}
+
           <dt class="col-sm-5">Arquivo</dt>
           <dd class="col-sm-7">
             {% if canhoto.arquivo %}

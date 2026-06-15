@@ -37,6 +37,7 @@ class Canhoto(models.Model):
         related_name='canhoto',
         verbose_name='Nota Fiscal Vinculada',
     )
+    pagina_numero = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name='Página (PDF original)')
     data_recebimento = models.DateField(null=True, blank=True, verbose_name='Data de Recebimento')
     texto_ocr = models.TextField(blank=True, verbose_name='Texto Extraído pelo OCR')
     erro_mensagem = models.TextField(blank=True, verbose_name='Mensagem de Erro')

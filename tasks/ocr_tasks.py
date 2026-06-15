@@ -13,7 +13,9 @@ Both tasks use exponential backoff retries and move files to /erro/ on max retri
 """
 import logging
 import os
+import re
 from pathlib import Path
+from typing import Optional
 
 from celery import shared_task
 from django.conf import settings
@@ -70,26 +72,39 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
             return {'status': 'sucesso', 'tipo': 'nota', 'numero': numero_nota, 'nota_id': nota.id}
 
         else:  # tipo == 'canhoto'
-            canhoto = None
-            try:
-                # Copia para MEDIA primeiro (evita arquivo bloqueado e garante permanência)
-                canhoto, caminho_copia = _criar_canhoto_processando(caminho_arquivo)
+            # Se for PDF com múltiplas páginas: divide e enfileira uma tarefa por página
+            if caminho.suffix.lower() == '.pdf':
+                _aguardar_arquivo_disponivel(caminho)
+                n_paginas = ocr_service.contar_paginas_pdf(caminho_arquivo)
+                if n_paginas > 1:
+                    _logger.info('[CANHOTO] PDF com %d páginas — dividindo em tarefas individuais', n_paginas)
+                    paginas = _dividir_canhoto_em_paginas(caminho_arquivo, n_paginas)
+                    for i, pagina_path in enumerate(paginas, 1):
+                        processar_arquivo.delay(pagina_path, 'canhoto')
+                    _logger.info('[CANHOTO] %d tarefas enfileiradas para %s', len(paginas), caminho.name)
+                    return {'status': 'dividido', 'paginas': n_paginas, 'arquivo': caminho.name}
 
-                # OCR APENAS na cópia — nunca no arquivo original para não travar o scanner
+            # PDF de página única ou imagem: processa diretamente
+            canhoto = None
+            pagina_num = _extrair_numero_pagina_do_nome(caminho.name)
+            try:
+                # Copia para MEDIA primeiro — OCR APENAS na cópia (não trava o arquivo original)
+                canhoto, caminho_copia = _criar_canhoto_processando(
+                    caminho_arquivo, pagina_numero=pagina_num
+                )
+
                 resultado_ocr = ocr_service.processar_arquivo(caminho_copia)
                 numero_nota = resultado_ocr.get('numero_nota')
 
-                # Salva texto OCR, numero detectado e data de recebimento antes de conciliar
-                _salvar_texto_ocr(canhoto, resultado_ocr.get('texto', ''))
-                campos_extras = {}
+                # Persiste texto OCR, número e data de recebimento
+                campos_extras = {'texto_ocr': resultado_ocr.get('texto', '')}
                 if numero_nota:
                     campos_extras['numero_detectado'] = numero_nota
                 data_recebimento = resultado_ocr.get('data_recebimento')
                 if data_recebimento:
                     campos_extras['data_recebimento'] = data_recebimento
-                if campos_extras:
-                    from repositories.canhoto_repository import CanhotoRepository
-                    CanhotoRepository().atualizar(canhoto, **campos_extras)
+                from repositories.canhoto_repository import CanhotoRepository
+                CanhotoRepository().atualizar(canhoto, **campos_extras)
 
                 if not numero_nota:
                     _finalizar_canhoto_erro(canhoto, 'numero_nota_nao_detectado_no_ocr')
@@ -99,7 +114,7 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                 conciliacao_service = ConciliacaoService()
                 try:
                     resultado = conciliacao_service.conciliar(canhoto.id, numero_nota)
-                    _logger.info('[CANHOTO] Conciliado NF %s', numero_nota)
+                    _logger.info('[CANHOTO] Conciliado NF %s (pág %s)', numero_nota, pagina_num)
                     return {'status': 'sucesso', 'tipo': 'canhoto', 'numero': numero_nota, 'conciliado': resultado.sucesso}
                 except Exception as exc_concil:
                     _finalizar_canhoto_erro(canhoto, str(exc_concil))
@@ -179,23 +194,75 @@ def _salvar_texto_ocr(canhoto, texto: str) -> None:
         CanhotoRepository().atualizar(canhoto, texto_ocr=texto)
 
 
-def _criar_canhoto_processando(caminho_arquivo: str):
+def _extrair_numero_pagina_do_nome(nome_arquivo: str) -> Optional[int]:
+    """Extrai o número da página do nome do arquivo (ex: '...20260615_p003.pdf' → 3)."""
+    m = re.search(r'_p(\d{3})\.pdf$', nome_arquivo, re.IGNORECASE)
+    return int(m.group(1)) if m else None
+
+
+def _dividir_canhoto_em_paginas(caminho_arquivo: str, n_paginas: int) -> list:
     """
-    Copia o arquivo para MEDIA_ROOT e cria o registro Canhoto com PROCESSANDO.
-    Retorna (canhoto, caminho_absoluto_copia).
+    Aguarda o arquivo ser liberado, copia para MEDIA_ROOT e divide em páginas individuais.
+    Retorna lista de caminhos absolutos dos PDFs de página única.
+    """
+    from services.ocr_service import OCRService
+    from django.conf import settings
+    from pathlib import Path
+    from django.utils import timezone
+
+    caminho = Path(caminho_arquivo)
+    _aguardar_arquivo_disponivel(caminho)
+
+    ts = timezone.now().strftime('%Y%m%d_%H%M%S_%f')
+    stem = f'{ts}_{caminho.stem}'
+
+    destino_dir = Path(settings.MEDIA_ROOT) / 'canhotos' / 'paginas'
+    destino_dir.mkdir(parents=True, exist_ok=True)
+
+    # Cria um PDF temporário no destino para usar como base da divisão
+    import shutil
+    pdf_temp = destino_dir / f'{stem}.pdf'
+    shutil.copy2(str(caminho), str(pdf_temp))
+
+    paginas = OCRService.dividir_pdf_em_paginas(str(pdf_temp), str(destino_dir))
+
+    # Remove o PDF completo temporário após dividir
+    try:
+        pdf_temp.unlink()
+    except Exception:
+        pass
+
+    logger.info('[CANHOTO] PDF dividido: %d páginas em %s', n_paginas, destino_dir)
+    return paginas
+
+
+def _criar_canhoto_processando(caminho_arquivo: str, pagina_numero: Optional[int] = None):
+    """
+    Copia o arquivo para MEDIA_ROOT (se ainda não estiver lá) e cria o registro
+    Canhoto com status PROCESSANDO. Retorna (canhoto, caminho_absoluto_copia).
     """
     from repositories.canhoto_repository import CanhotoRepository
     from apps.canhotos.models import StatusProcessamento
     from django.conf import settings
     from pathlib import Path
 
-    caminho_relativo = _copiar_para_media(caminho_arquivo)
-    caminho_absoluto = str(Path(settings.MEDIA_ROOT) / caminho_relativo)
+    media_root = Path(settings.MEDIA_ROOT)
+    caminho = Path(caminho_arquivo)
+
+    # Se o arquivo já está dentro do MEDIA_ROOT (ex: página já dividida), não copia
+    try:
+        caminho_relativo = str(caminho.relative_to(media_root))
+        caminho_absoluto = str(caminho)
+    except ValueError:
+        # Arquivo fora do MEDIA_ROOT → copiar agora
+        caminho_relativo = _copiar_para_media(caminho_arquivo)
+        caminho_absoluto = str(media_root / caminho_relativo)
 
     repo = CanhotoRepository()
     canhoto = repo.criar(
         arquivo=caminho_relativo,
         status_processamento=StatusProcessamento.PROCESSANDO,
+        pagina_numero=pagina_numero,
     )
     return canhoto, caminho_absoluto
 
