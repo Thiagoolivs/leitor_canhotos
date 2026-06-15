@@ -85,7 +85,16 @@
               {% endif %}
             </td>
             <td class="text-center text-muted small">{{ canhoto.pagina_numero|default:"—" }}</td>
-            <td>{{ canhoto.numero_detectado|default:"—" }}</td>
+            <td>
+              {{ canhoto.numero_detectado|default:"—" }}
+              {% if canhoto.confianca_deteccao == "ALTA" %}
+                <span class="badge bg-success ms-1" title="Alta confiança">✓</span>
+              {% elif canhoto.confianca_deteccao == "MEDIA" %}
+                <span class="badge bg-warning text-dark ms-1" title="Média confiança">~</span>
+              {% elif canhoto.confianca_deteccao == "BAIXA" %}
+                <span class="badge bg-danger ms-1" title="Baixa confiança">!</span>
+              {% endif %}
+            </td>
             <td>
               {% if canhoto.status_processamento == "SUCESSO" %}
                 <span class="badge-status badge-finalizado">Sucesso</span>
