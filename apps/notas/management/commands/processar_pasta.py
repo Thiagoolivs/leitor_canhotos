@@ -46,6 +46,13 @@ class Command(BaseCommand):
             help='Pasta a varrer. Se omitido, usa SCANNER_NOTA_DIRS / SCANNER_CANHOTO_DIRS do .env.',
         )
         parser.add_argument(
+            '--ultimos',
+            type=int,
+            default=None,
+            metavar='N',
+            help='Processa apenas os N arquivos mais recentes (por data de modificação).',
+        )
+        parser.add_argument(
             '--dry-run',
             action='store_true',
             default=False,
@@ -75,6 +82,7 @@ class Command(BaseCommand):
 
         from tasks.ocr_tasks import processar_arquivo
 
+        ultimos = options['ultimos']
         total_enfileirados = 0
         total_ignorados = 0
 
@@ -83,14 +91,20 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f'Pasta não encontrada, pulando: {pasta}'))
                 continue
 
-            arquivos = sorted([
-                f for f in pasta.iterdir()
-                if f.is_file() and f.suffix.lower() in EXTENSOES_SUPORTADAS
-            ])
-
-            self.stdout.write(
-                self.style.HTTP_INFO(f'\n📂 {pasta} — {len(arquivos)} arquivo(s) encontrado(s)')
+            # Ordena por data de modificação (mais recentes primeiro)
+            arquivos = sorted(
+                [f for f in pasta.iterdir() if f.is_file() and f.suffix.lower() in EXTENSOES_SUPORTADAS],
+                key=lambda f: f.stat().st_mtime,
+                reverse=True,
             )
+
+            if ultimos:
+                arquivos = arquivos[:ultimos]
+                # Inverte para processar em ordem cronológica (mais antigo → mais novo)
+                arquivos = list(reversed(arquivos))
+
+            descricao = f'{len(arquivos)} arquivo(s)' + (f' (últimos {ultimos})' if ultimos else '')
+            self.stdout.write(self.style.HTTP_INFO(f'\n📂 {pasta} — {descricao}'))
 
             for arquivo in arquivos:
                 if dry_run:
