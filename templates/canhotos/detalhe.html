@@ -50,7 +50,26 @@
           </dd>
 
           <dt class="col-sm-5">Número Detectado</dt>
-          <dd class="col-sm-7">{{ canhoto.numero_detectado|default:"Não detectado" }}</dd>
+          <dd class="col-sm-7">
+            {{ canhoto.numero_detectado|default:"Não detectado" }}
+            {% if canhoto.confianca_deteccao %}
+              {% if canhoto.confianca_deteccao == "ALTA" %}
+                <span class="badge bg-success ms-1">Alta confiança</span>
+              {% elif canhoto.confianca_deteccao == "MEDIA" %}
+                <span class="badge bg-warning text-dark ms-1">Média confiança</span>
+              {% else %}
+                <span class="badge bg-danger ms-1">Baixa confiança</span>
+              {% endif %}
+            {% endif %}
+          </dd>
+
+          {% if canhoto.numero_barcode %}
+          <dt class="col-sm-5">Número via Barcode</dt>
+          <dd class="col-sm-7">
+            <i class="bi bi-upc-scan me-1 text-success"></i>
+            <code>{{ canhoto.numero_barcode }}</code>
+          </dd>
+          {% endif %}
 
           <dt class="col-sm-5">Status OCR</dt>
           <dd class="col-sm-7">

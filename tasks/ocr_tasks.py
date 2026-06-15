@@ -93,13 +93,20 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                     caminho_arquivo, pagina_numero=pagina_num
                 )
 
-                resultado_ocr = ocr_service.processar_arquivo(caminho_copia)
+                # Usa processamento especializado: OCR + barcode na mesma imagem
+                resultado_ocr = ocr_service.processar_pagina_canhoto(caminho_copia)
                 numero_nota = resultado_ocr.get('numero_nota')
 
-                # Persiste texto OCR, número e data de recebimento
-                campos_extras = {'texto_ocr': resultado_ocr.get('texto', '')}
+                # Persiste todos os campos extraídos
+                campos_extras = {
+                    'texto_ocr': resultado_ocr.get('texto', ''),
+                    'confianca_deteccao': resultado_ocr.get('confianca', ''),
+                }
                 if numero_nota:
                     campos_extras['numero_detectado'] = numero_nota
+                numero_barcode = resultado_ocr.get('numero_barcode', '')
+                if numero_barcode:
+                    campos_extras['numero_barcode'] = numero_barcode
                 data_recebimento = resultado_ocr.get('data_recebimento')
                 if data_recebimento:
                     campos_extras['data_recebimento'] = data_recebimento

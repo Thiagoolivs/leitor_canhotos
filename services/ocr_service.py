@@ -233,6 +233,187 @@ class OCRService:
         return arquivos
 
     # ------------------------------------------------------------------
+    # Leitura de código de barras / QR code
+    # ------------------------------------------------------------------
+
+    def _ler_barcode_imagem(self, imagem) -> Optional[str]:
+        """
+        Tenta ler o código de barras Code128 ou QR do DANFE numa imagem PIL.
+
+        A chave de acesso da NF-e tem 44 dígitos. O número da NF ocupa as
+        posições 25-33 (índice 0). Retorna None se pyzbar não estiver instalado
+        ou nenhum código válido for encontrado.
+        """
+        try:
+            from pyzbar.pyzbar import decode
+        except ImportError:
+            self.logger.debug('pyzbar não instalado — leitura de código de barras desativada.')
+            return None
+
+        try:
+            decoded = decode(imagem)
+            for d in decoded:
+                data = d.data.decode('utf-8', errors='ignore').strip()
+                # Chave de acesso NF-e: 44 dígitos numéricos
+                if data.isdigit() and len(data) == 44:
+                    numero_raw = data[25:34]  # posições 25-33 = nNF (9 dígitos)
+                    numero = str(int(numero_raw)) if numero_raw.isdigit() else None
+                    if numero:
+                        self.logger.info(
+                            'Código de barras lido: NF=%s (chave=%s...%s)',
+                            numero, data[:6], data[-6:],
+                        )
+                        return numero
+        except Exception as exc:
+            self.logger.warning('Erro ao ler código de barras: %s', exc)
+        return None
+
+    def _obter_imagens_pagina(self, caminho: str) -> list:
+        """Converte arquivo (PDF ou imagem) em lista de PIL Images."""
+        ext = Path(caminho).suffix.lower()
+        if ext == '.pdf':
+            from pdf2image import convert_from_path
+            poppler_path = getattr(settings, 'POPPLER_PATH', None)
+            kwargs = dict(dpi=300, fmt='png', thread_count=1)
+            if poppler_path:
+                kwargs['poppler_path'] = poppler_path
+            return list(convert_from_path(caminho, **kwargs))
+        else:
+            from PIL import Image
+            return [Image.open(caminho)]
+
+    # ------------------------------------------------------------------
+    # Extração de múltiplos candidatos (redundância)
+    # ------------------------------------------------------------------
+
+    def extrair_todos_candidatos_nota(self, texto: str) -> list:
+        """
+        Retorna todos os candidatos a número de NF encontrados no texto,
+        classificados por confiança (ALTA = padrão específico, BAIXA = número isolado).
+
+        Cada item: {'numero': str, 'raw': str, 'confianca': str}
+        """
+        if not texto:
+            return []
+
+        texto_upper = texto.upper()
+        candidatos = []
+        vistos: set = set()
+
+        # Confiança por índice de padrão (do mais ao menos específico)
+        confiancas = ['ALTA', 'ALTA', 'MEDIA', 'MEDIA', 'BAIXA']
+
+        for i, pattern in enumerate(self.patterns):
+            conf = confiancas[i] if i < len(confiancas) else 'BAIXA'
+            try:
+                for raw in re.findall(pattern, texto_upper, re.MULTILINE | re.IGNORECASE):
+                    raw = raw.strip()
+                    numero = str(int(raw)) if raw.isdigit() else raw
+                    if numero and numero not in vistos:
+                        vistos.add(numero)
+                        candidatos.append({'numero': numero, 'raw': raw, 'confianca': conf})
+            except re.error:
+                pass
+
+        return candidatos
+
+    def processar_pagina_canhoto(self, caminho: str) -> dict:
+        """
+        Processamento especializado para páginas de canhoto (PDF ou imagem).
+
+        Converte para imagem UMA vez e roda em paralelo:
+        - OCR (Tesseract) → todos os candidatos de NF
+        - Barcode (pyzbar) → NF direto da chave de acesso de 44 dígitos
+
+        Lógica de confiança:
+        - Barcode + OCR concordam → ALTA
+        - Dois padrões OCR distintos concordam → ALTA
+        - Apenas barcode → MEDIA
+        - Apenas OCR (1 padrão) → confiança do padrão
+        - Nenhum → BAIXA
+        """
+        import pytesseract
+        from core.exceptions import OCRException
+
+        _vazio = {
+            'texto': '', 'numero_nota': None, 'numero_barcode': None,
+            'candidatos_ocr': [], 'confianca': 'BAIXA',
+            'data_recebimento': None,
+            'data_emissao': None, 'destinatario': '', 'valor_total': None,
+        }
+
+        try:
+            imagens = self._obter_imagens_pagina(caminho)
+        except Exception as exc:
+            raise OCRException(f'Falha ao converter para imagem: {exc}', caminho_arquivo=caminho) from exc
+
+        if not imagens:
+            raise OCRException('Arquivo sem páginas.', caminho_arquivo=caminho)
+
+        imagem = imagens[0]  # canhoto = página única
+
+        # OCR
+        try:
+            texto = pytesseract.image_to_string(imagem, config=self.TESSERACT_CONFIG)
+            self.logger.debug('OCR canhoto: %d chars', len(texto))
+        except Exception as exc:
+            texto = ''
+            self.logger.warning('OCR falhou na página: %s', exc)
+
+        # Barcode (na mesma imagem, sem recusar)
+        numero_barcode = self._ler_barcode_imagem(imagem)
+
+        # Candidatos OCR
+        candidatos_ocr = self.extrair_todos_candidatos_nota(texto)
+        numero_ocr = candidatos_ocr[0]['numero'] if candidatos_ocr else None
+
+        # Reconciliação com redundância
+        if numero_barcode and numero_ocr:
+            if numero_barcode == numero_ocr:
+                numero_final, confianca = numero_barcode, 'ALTA'
+                self.logger.info('Barcode + OCR concordam: NF=%s [ALTA]', numero_final)
+            else:
+                numero_final, confianca = numero_barcode, 'MEDIA'
+                self.logger.warning(
+                    'Barcode e OCR divergem — barcode=%s ocr=%s — usando barcode [MEDIA]',
+                    numero_barcode, numero_ocr,
+                )
+        elif numero_barcode:
+            numero_final, confianca = numero_barcode, 'MEDIA'
+            self.logger.info('Apenas barcode: NF=%s [MEDIA]', numero_final)
+        elif numero_ocr:
+            # Verifica se o mesmo número aparece em mais de um padrão (redundância OCR)
+            ocorrencias_mesmo = sum(1 for c in candidatos_ocr if c['numero'] == numero_ocr)
+            if ocorrencias_mesmo >= 2:
+                confianca = 'ALTA'
+                self.logger.info('OCR redundante (2+ padrões): NF=%s [ALTA]', numero_ocr)
+            else:
+                confianca = candidatos_ocr[0]['confianca']
+                self.logger.info('Apenas OCR: NF=%s [%s]', numero_ocr, confianca)
+            numero_final = numero_ocr
+        else:
+            numero_final, confianca = None, 'BAIXA'
+            self.logger.warning('Nenhum número de NF detectado em %s', Path(caminho).name)
+
+        self.logger.info(
+            'Canhoto: %s | nf=%s | barcode=%s | confianca=%s | candidatos=%s',
+            Path(caminho).name, numero_final, numero_barcode,
+            confianca, [c['numero'] for c in candidatos_ocr],
+        )
+
+        return {
+            **_vazio,
+            'texto': texto,
+            'numero_nota': numero_final,
+            'numero_barcode': numero_barcode or '',
+            'candidatos_ocr': candidatos_ocr,
+            'confianca': confianca,
+            'data_recebimento': self.extrair_data_recebimento(texto),
+            'sucesso': True,
+            'erro': None,
+        }
+
+    # ------------------------------------------------------------------
     # Extração de campos estruturados
     # ------------------------------------------------------------------
 

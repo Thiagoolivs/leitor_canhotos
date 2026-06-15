@@ -38,6 +38,12 @@ class Canhoto(models.Model):
         verbose_name='Nota Fiscal Vinculada',
     )
     pagina_numero = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name='Página (PDF original)')
+    numero_barcode = models.CharField(max_length=50, blank=True, verbose_name='Número via Código de Barras')
+    confianca_deteccao = models.CharField(
+        max_length=5, blank=True,
+        choices=[('ALTA', 'Alta'), ('MEDIA', 'Média'), ('BAIXA', 'Baixa')],
+        verbose_name='Confiança da Detecção',
+    )
     data_recebimento = models.DateField(null=True, blank=True, verbose_name='Data de Recebimento')
     texto_ocr = models.TextField(blank=True, verbose_name='Texto Extraído pelo OCR')
     erro_mensagem = models.TextField(blank=True, verbose_name='Mensagem de Erro')
