@@ -62,6 +62,9 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
             nota = nota_service.registrar_nota_escaneada(
                 numero=numero_nota,
                 arquivo_path=caminho_arquivo,
+                data_emissao=resultado_ocr.get('data_emissao'),
+                destinatario=resultado_ocr.get('destinatario', ''),
+                valor_total=resultado_ocr.get('valor_total'),
             )
             novo_caminho = canhoto_service.mover_para_processados(caminho_arquivo, numero_nota)
             _logger.info('[NOTA] NF %s registrada (id=%s) -> %s', numero_nota, nota.id, novo_caminho)
@@ -78,11 +81,17 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                 resultado_ocr_copia = ocr_service.processar_arquivo(caminho_copia)
                 numero_nota = resultado_ocr_copia.get('numero_nota')
 
-                # Salva texto OCR e numero detectado antes de tentar conciliar
+                # Salva texto OCR, numero detectado e data de recebimento antes de tentar conciliar
                 _salvar_texto_ocr(canhoto, resultado_ocr_copia.get('texto', ''))
+                campos_extras = {}
                 if numero_nota:
+                    campos_extras['numero_detectado'] = numero_nota
+                data_recebimento = resultado_ocr_copia.get('data_recebimento')
+                if data_recebimento:
+                    campos_extras['data_recebimento'] = data_recebimento
+                if campos_extras:
                     from repositories.canhoto_repository import CanhotoRepository
-                    CanhotoRepository().atualizar(canhoto, numero_detectado=numero_nota)
+                    CanhotoRepository().atualizar(canhoto, **campos_extras)
 
                 if not numero_nota:
                     _finalizar_canhoto_erro(canhoto, 'numero_nota_nao_detectado_no_ocr')
@@ -275,8 +284,12 @@ def processar_canhoto(self, caminho_arquivo: str) -> dict:
                 'mensagem': f'OCR falhou: {ocr_erro}',
             }
 
-        # Update detected number and persist OCR text
-        canhoto_repo.atualizar(canhoto, numero_detectado=numero_nota or '', texto_ocr=texto_ocr)
+        # Update detected number, date and persist OCR text
+        campos_canhoto = {'numero_detectado': numero_nota or '', 'texto_ocr': texto_ocr}
+        data_recebimento = resultado_ocr.get('data_recebimento')
+        if data_recebimento:
+            campos_canhoto['data_recebimento'] = data_recebimento
+        canhoto_repo.atualizar(canhoto, **campos_canhoto)
 
         # -- Step 4: Attempt conciliation if invoice number was found
         if numero_nota:

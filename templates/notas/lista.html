@@ -94,10 +94,10 @@
           <tr>
             <th>Número</th>
             <th>Data Emissão</th>
-            <th>Categoria</th>
+            <th>Destinatário</th>
+            <th>Valor Total</th>
             <th>Status</th>
             <th>Canhoto</th>
-            <th>Criado em</th>
             <th class="text-center">Ações</th>
           </tr>
         </thead>
@@ -105,8 +105,9 @@
           {% for nota in notas %}
           <tr>
             <td><strong>{{ nota.numero }}</strong></td>
-            <td>{{ nota.data_emissao|date:"d/m/Y" }}</td>
-            <td>{{ nota.categoria|default:"-" }}</td>
+            <td>{{ nota.data_emissao|date:"d/m/Y"|default:"—" }}</td>
+            <td class="text-truncate" style="max-width:160px;" title="{{ nota.destinatario }}">{{ nota.destinatario|default:"—" }}</td>
+            <td class="text-nowrap">{% if nota.valor_total %}R$ {{ nota.valor_total|floatformat:2 }}{% else %}—{% endif %}</td>
             <td>
               {% if nota.status == "AGUARDANDO_CANHOTO" %}
                 <span class="badge-status badge-aguardando">Aguardando Canhoto</span>
@@ -127,7 +128,6 @@
                 <span class="text-muted"><i class="bi bi-dash-circle"></i> Sem canhoto</span>
               {% endif %}
             </td>
-            <td>{{ nota.created_at|date:"d/m/Y H:i" }}</td>
             <td class="text-center">
               <a href="{% url 'notas:detalhe' nota.pk %}"
                  class="btn btn-sm btn-outline-primary me-1"

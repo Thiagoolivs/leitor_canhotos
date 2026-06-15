@@ -14,12 +14,37 @@ Dependencies:
 """
 import logging
 import re
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+# Regex for extracting date fields from DANFE text
+_RE_DATA_EMISSAO = re.compile(
+    r'DATA\s+DE\s+EMISS[AÃ]O\s*[:\-]?\s*(\d{2}/\d{2}/\d{4})',
+    re.IGNORECASE,
+)
+_RE_DATA_RECEBIMENTO = re.compile(
+    r'DATA\s+DE\s+RECEBIMENTO\s*[:\-]?\s*(\d{2}/\d{2}/\d{2,4})',
+    re.IGNORECASE,
+)
+# Matches "NOME / RAZÃO SOCIAL" field on DANFE (the next non-empty line after the header)
+_RE_DESTINATARIO = re.compile(
+    r'(?:DESTINAT[AÁ]RIO|NOME\s*/\s*RAZ[AÃ]O\s+SOCIAL)\s*\n?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][^\n]{3,80})',
+    re.IGNORECASE,
+)
+_RE_VALOR_TOTAL = re.compile(
+    r'VALOR\s+TOTAL\s+(?:DA\s+)?NOTA\s+FISCAL\s*\n?\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})',
+    re.IGNORECASE,
+)
+# Fallback: any "VALOR TOTAL" followed by a currency amount
+_RE_VALOR_TOTAL_FALLBACK = re.compile(
+    r'VALOR\s+TOTAL\s*[:\-]?\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})',
+    re.IGNORECASE,
+)
 
 
 class OCRService:
@@ -179,6 +204,53 @@ class OCRService:
         self.logger.info('Nenhum número de nota encontrado no texto OCR.')
         return None
 
+    def extrair_data_emissao(self, texto: str) -> Optional[date]:
+        """Extract emission date from DANFE OCR text. Returns date or None."""
+        m = _RE_DATA_EMISSAO.search(texto)
+        if not m:
+            return None
+        return self._parse_date_br(m.group(1))
+
+    def extrair_data_recebimento(self, texto: str) -> Optional[date]:
+        """Extract receipt date from canhoto stub OCR text. Returns date or None."""
+        m = _RE_DATA_RECEBIMENTO.search(texto)
+        if not m:
+            return None
+        return self._parse_date_br(m.group(1))
+
+    def extrair_destinatario(self, texto: str) -> str:
+        """Extract recipient name from DANFE OCR text."""
+        m = _RE_DESTINATARIO.search(texto)
+        if not m:
+            return ''
+        return m.group(1).strip()[:200]
+
+    def extrair_valor_total(self, texto: str) -> Optional['Decimal']:
+        """Extract total invoice value from DANFE OCR text. Returns Decimal or None."""
+        from decimal import Decimal, InvalidOperation
+        for pattern in (_RE_VALOR_TOTAL, _RE_VALOR_TOTAL_FALLBACK):
+            m = pattern.search(texto)
+            if m:
+                raw = m.group(1).strip()
+                # BR format: 1.234.567,89 -> 1234567.89
+                try:
+                    valor = Decimal(raw.replace('.', '').replace(',', '.'))
+                    return valor
+                except InvalidOperation:
+                    continue
+        return None
+
+    @staticmethod
+    def _parse_date_br(texto_data: str) -> Optional[date]:
+        """Parse DD/MM/YYYY or DD/MM/YY into a date object."""
+        from datetime import datetime
+        for fmt in ('%d/%m/%Y', '%d/%m/%y'):
+            try:
+                return datetime.strptime(texto_data.strip(), fmt).date()
+            except ValueError:
+                continue
+        return None
+
     def processar_arquivo(self, caminho_arquivo: str) -> dict:
         """
         Main entry point: extract text and invoice number from a file.
@@ -201,8 +273,9 @@ class OCRService:
 
         if not caminho.exists():
             return {
-                'texto': '',
-                'numero_nota': None,
+                'texto': '', 'numero_nota': None,
+                'data_emissao': None, 'data_recebimento': None,
+                'destinatario': '', 'valor_total': None,
                 'sucesso': False,
                 'erro': f'Arquivo não encontrado: {caminho_arquivo}',
             }
@@ -216,22 +289,31 @@ class OCRService:
                 texto = self.extrair_texto_imagem(str(caminho))
             else:
                 return {
-                    'texto': '',
-                    'numero_nota': None,
+                    'texto': '', 'numero_nota': None,
+                    'data_emissao': None, 'data_recebimento': None,
+                    'destinatario': '', 'valor_total': None,
                     'sucesso': False,
                     'erro': f'Tipo de arquivo não suportado: {extensao}',
                 }
 
             numero_nota = self.extrair_numero_nota(texto)
+            data_emissao = self.extrair_data_emissao(texto)
+            data_recebimento = self.extrair_data_recebimento(texto)
+            destinatario = self.extrair_destinatario(texto)
+            valor_total = self.extrair_valor_total(texto)
 
             self.logger.info(
-                'Arquivo processado: %s | numero_nota=%s | texto_chars=%d',
-                caminho.name, numero_nota, len(texto),
+                'Arquivo processado: %s | numero_nota=%s | data_emissao=%s | destinatario=%r | valor_total=%s | texto_chars=%d',
+                caminho.name, numero_nota, data_emissao, destinatario, valor_total, len(texto),
             )
 
             return {
                 'texto': texto,
                 'numero_nota': numero_nota,
+                'data_emissao': data_emissao,
+                'data_recebimento': data_recebimento,
+                'destinatario': destinatario,
+                'valor_total': valor_total,
                 'sucesso': True,
                 'erro': None,
             }
@@ -239,16 +321,16 @@ class OCRService:
         except OCRException as exc:
             self.logger.error('OCRException ao processar %s: %s', caminho_arquivo, exc)
             return {
-                'texto': '',
-                'numero_nota': None,
-                'sucesso': False,
-                'erro': str(exc),
+                'texto': '', 'numero_nota': None,
+                'data_emissao': None, 'data_recebimento': None,
+                'destinatario': '', 'valor_total': None,
+                'sucesso': False, 'erro': str(exc),
             }
         except Exception as exc:
             self.logger.exception('Erro inesperado ao processar %s: %s', caminho_arquivo, exc)
             return {
-                'texto': '',
-                'numero_nota': None,
-                'sucesso': False,
-                'erro': f'Erro inesperado: {exc}',
+                'texto': '', 'numero_nota': None,
+                'data_emissao': None, 'data_recebimento': None,
+                'destinatario': '', 'valor_total': None,
+                'sucesso': False, 'erro': f'Erro inesperado: {exc}',
             }

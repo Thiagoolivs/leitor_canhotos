@@ -37,6 +37,7 @@ class Canhoto(models.Model):
         related_name='canhoto',
         verbose_name='Nota Fiscal Vinculada',
     )
+    data_recebimento = models.DateField(null=True, blank=True, verbose_name='Data de Recebimento')
     texto_ocr = models.TextField(blank=True, verbose_name='Texto Extraído pelo OCR')
     erro_mensagem = models.TextField(blank=True, verbose_name='Mensagem de Erro')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Criado em')

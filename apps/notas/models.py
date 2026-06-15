@@ -17,7 +17,9 @@ class StatusNota(models.TextChoices):
 
 class NotaFiscal(models.Model):
     numero = models.CharField(max_length=50, unique=True, verbose_name='Número')
-    data_emissao = models.DateField(verbose_name='Data de Emissão')
+    data_emissao = models.DateField(null=True, blank=True, verbose_name='Data de Emissão')
+    destinatario = models.CharField(max_length=200, blank=True, verbose_name='Destinatário')
+    valor_total = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True, verbose_name='Valor Total (R$)')
     categoria = models.CharField(max_length=100, blank=True, verbose_name='Categoria')
     status = models.CharField(
         max_length=30,

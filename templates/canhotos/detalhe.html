@@ -67,6 +67,9 @@
           </dd>
           {% endif %}
 
+          <dt class="col-sm-5">Data de Recebimento</dt>
+          <dd class="col-sm-7">{{ canhoto.data_recebimento|date:"d/m/Y"|default:"—" }}</dd>
+
           <dt class="col-sm-5">Nota Vinculada</dt>
           <dd class="col-sm-7">
             {% if canhoto.nota %}

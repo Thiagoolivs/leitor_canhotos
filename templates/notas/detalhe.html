@@ -37,7 +37,17 @@
           <dd class="col-sm-8"><strong class="fs-5">{{ nota.numero }}</strong></dd>
 
           <dt class="col-sm-4">Data Emissão</dt>
-          <dd class="col-sm-8">{{ nota.data_emissao|date:"d/m/Y" }}</dd>
+          <dd class="col-sm-8">{{ nota.data_emissao|date:"d/m/Y"|default:"—" }}</dd>
+
+          <dt class="col-sm-4">Destinatário</dt>
+          <dd class="col-sm-8">{{ nota.destinatario|default:"—" }}</dd>
+
+          <dt class="col-sm-4">Valor Total</dt>
+          <dd class="col-sm-8">
+            {% if nota.valor_total %}
+              R$ {{ nota.valor_total|floatformat:2 }}
+            {% else %}—{% endif %}
+          </dd>
 
           <dt class="col-sm-4">Categoria</dt>
           <dd class="col-sm-8">{{ nota.categoria|default:"Não informada" }}</dd>
