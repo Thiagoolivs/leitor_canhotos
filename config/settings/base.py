@@ -253,11 +253,11 @@ POPPLER_PATH = _resolve_poppler_path()
 # Regex patterns for extracting Brazilian invoice (Nota Fiscal) numbers from OCR text.
 # Ordered from most specific to least specific to minimize false positives.
 NOTA_NUMBER_PATTERNS = [
-    r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{1,6})',
-    r'N[Oo°\.º]\s*:?\s*(\d{1,6})',
-    r'NF\s*[-:]\s*(\d{1,6})',
-    r'N[ÚúUu]MERO\s*(?:DA\s+NOTA)?\s*:?\s*(\d{1,6})',
-    r'(?:^|\s)(\d{6})(?:\s|$)',
+    r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{1,9})',
+    r'N[Oo°\.º]\s*:?\s*(\d{1,9})',
+    r'NF\s*[-:]\s*(\d{1,9})',
+    r'N[ÚúUu]MERO\s*(?:DA\s+NOTA)?\s*:?\s*(\d{1,9})',
+    r'(?:^|\s)(\d{6,9})(?:\s|$)',
 ]
 
 # ==============================================================================
