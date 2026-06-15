@@ -240,35 +240,45 @@ class OCRService:
         """
         Tenta ler o código de barras Code128 ou QR do DANFE numa imagem PIL.
 
-        A chave de acesso da NF-e tem 44 dígitos. O número da NF ocupa as
-        posições 25-33 (índice 0). Retorna None silenciosamente se pyzbar não
-        estiver instalado, a DLL do Windows não for encontrada, ou nenhum
-        código válido for detectado.
+        Tenta em ordem:
+        1. zxing-cpp  — funciona no Windows sem DLLs externas (pip install zxing-cpp)
+        2. pyzbar     — requer libzbar-64.dll no Windows (fallback)
+
+        A chave de acesso NF-e tem 44 dígitos; o número da NF está nas pos. 25-33.
+        Retorna None silenciosamente se nenhuma biblioteca estiver disponível.
         """
+        chave = self._ler_chave_acesso_zxing(imagem) or self._ler_chave_acesso_pyzbar(imagem)
+        if chave and chave.isdigit() and len(chave) == 44:
+            numero_raw = chave[25:34]
+            numero = str(int(numero_raw)) if numero_raw.isdigit() and int(numero_raw) > 0 else None
+            if numero:
+                self.logger.info('Barcode: NF=%s (chave=%s...%s)', numero, chave[:6], chave[-4:])
+                return numero
+        return None
+
+    def _ler_chave_acesso_zxing(self, imagem) -> Optional[str]:
+        """Lê código de barras usando zxing-cpp (sem DLL externa no Windows)."""
+        try:
+            import zxingcpp
+            resultados = zxingcpp.read_barcodes(imagem)
+            for r in resultados:
+                texto = r.text.strip()
+                if texto.isdigit() and len(texto) == 44:
+                    return texto
+        except Exception as exc:
+            self.logger.debug('zxing-cpp indisponível (%s).', type(exc).__name__)
+        return None
+
+    def _ler_chave_acesso_pyzbar(self, imagem) -> Optional[str]:
+        """Lê código de barras usando pyzbar (fallback; requer libzbar no Windows)."""
         try:
             from pyzbar.pyzbar import decode
-            decoded = decode(imagem)
+            for d in decode(imagem):
+                texto = d.data.decode('utf-8', errors='ignore').strip()
+                if texto.isdigit() and len(texto) == 44:
+                    return texto
         except Exception as exc:
-            # ImportError = não instalado; OSError/DLLNotFound = DLL faltando no Windows
-            # Em qualquer caso: ignora barcode e segue com OCR
-            self.logger.debug('pyzbar indisponível (%s) — barcode ignorado.', type(exc).__name__)
-            return None
-
-        try:
-            for d in decoded:
-                data = d.data.decode('utf-8', errors='ignore').strip()
-                # Chave de acesso NF-e: 44 dígitos numéricos
-                if data.isdigit() and len(data) == 44:
-                    numero_raw = data[25:34]  # posições 25-33 = nNF (9 dígitos)
-                    numero = str(int(numero_raw)) if numero_raw.isdigit() else None
-                    if numero:
-                        self.logger.info(
-                            'Código de barras lido: NF=%s (chave=%s...%s)',
-                            numero, data[:6], data[-6:],
-                        )
-                        return numero
-        except Exception as exc:
-            self.logger.warning('Erro ao processar código de barras: %s', exc)
+            self.logger.debug('pyzbar indisponível (%s).', type(exc).__name__)
         return None
 
     def _obter_imagens_pagina(self, caminho: str) -> list:
