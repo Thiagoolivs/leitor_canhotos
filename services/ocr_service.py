@@ -241,17 +241,20 @@ class OCRService:
         Tenta ler o código de barras Code128 ou QR do DANFE numa imagem PIL.
 
         A chave de acesso da NF-e tem 44 dígitos. O número da NF ocupa as
-        posições 25-33 (índice 0). Retorna None se pyzbar não estiver instalado
-        ou nenhum código válido for encontrado.
+        posições 25-33 (índice 0). Retorna None silenciosamente se pyzbar não
+        estiver instalado, a DLL do Windows não for encontrada, ou nenhum
+        código válido for detectado.
         """
         try:
             from pyzbar.pyzbar import decode
-        except ImportError:
-            self.logger.debug('pyzbar não instalado — leitura de código de barras desativada.')
+            decoded = decode(imagem)
+        except Exception as exc:
+            # ImportError = não instalado; OSError/DLLNotFound = DLL faltando no Windows
+            # Em qualquer caso: ignora barcode e segue com OCR
+            self.logger.debug('pyzbar indisponível (%s) — barcode ignorado.', type(exc).__name__)
             return None
 
         try:
-            decoded = decode(imagem)
             for d in decoded:
                 data = d.data.decode('utf-8', errors='ignore').strip()
                 # Chave de acesso NF-e: 44 dígitos numéricos
@@ -265,7 +268,7 @@ class OCRService:
                         )
                         return numero
         except Exception as exc:
-            self.logger.warning('Erro ao ler código de barras: %s', exc)
+            self.logger.warning('Erro ao processar código de barras: %s', exc)
         return None
 
     def _obter_imagens_pagina(self, caminho: str) -> list:
