@@ -59,8 +59,9 @@ class ScannerFileHandler(FileSystemEventHandler):
             self._processando.discard(chave)
             return
         try:
-            task = processar_arquivo.delay(str(caminho), self.tipo)
-            logger.info('[%s] Tarefa enfileirada: arquivo=%s task_id=%s', self.tipo.upper(), caminho.name, task.id)
+            fila = 'notas' if self.tipo == 'nota' else 'canhotos'
+            task = processar_arquivo.apply_async(args=[str(caminho), self.tipo], queue=fila)
+            logger.info('[%s] Tarefa enfileirada (fila=%s): arquivo=%s task_id=%s', self.tipo.upper(), fila, caminho.name, task.id)
         except Exception as exc:
             logger.error('[%s] Erro ao enfileirar %s: %s', self.tipo.upper(), caminho.name, exc)
         finally:

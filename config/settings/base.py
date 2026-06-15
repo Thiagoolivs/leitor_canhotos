@@ -147,6 +147,17 @@ CELERY_ACKS_LATE = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 
+# Filas separadas: notas têm prioridade sobre canhotos.
+# Iniciar o worker com:
+#   celery -A config.celery_app worker --pool=solo -Q notas,canhotos --loglevel=info
+# O worker consome a fila 'notas' primeiro; só vai para 'canhotos' quando ela esvaziar.
+CELERY_TASK_QUEUES = {
+    'notas': {'exchange': 'notas', 'routing_key': 'notas'},
+    'canhotos': {'exchange': 'canhotos', 'routing_key': 'canhotos'},
+    'celery': {'exchange': 'celery', 'routing_key': 'celery'},
+}
+CELERY_TASK_DEFAULT_QUEUE = 'celery'
+
 # ==============================================================================
 # PASSWORD VALIDATION
 # ==============================================================================

@@ -112,7 +112,10 @@ class Command(BaseCommand):
                     total_enfileirados += 1
                 else:
                     try:
-                        task = processar_arquivo.delay(str(arquivo), tipo)
+                        fila = 'notas' if tipo == 'nota' else 'canhotos'
+                        task = processar_arquivo.apply_async(
+                            args=[str(arquivo), tipo], queue=fila
+                        )
                         self.stdout.write(
                             self.style.SUCCESS(f'  ✓ {arquivo.name} → task {task.id}')
                         )
