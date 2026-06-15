@@ -125,19 +125,23 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
 def _aguardar_arquivo_disponivel(caminho: 'Path', timeout: int = 60) -> None:
     """
     Aguarda até que o arquivo seja legível (scanner terminou de escrever).
-    Tenta abrir o arquivo em modo exclusivo a cada 3s por até `timeout` segundos.
+    - Se o arquivo não existir: lança FileNotFoundError imediatamente.
+    - Se estiver bloqueado: tenta a cada 3s por até `timeout` segundos.
     """
     import time as _time
     prazo = _time.time() + timeout
-    while _time.time() < prazo:
+    while True:
+        if not caminho.exists():
+            raise FileNotFoundError(f'Arquivo removido pelo scanner antes de ser copiado: {caminho}')
         try:
             with open(str(caminho), 'rb') as f:
                 f.read(1024)
-            return
-        except (PermissionError, OSError):
+            return  # acessível, pode copiar
+        except PermissionError:
+            if _time.time() >= prazo:
+                raise PermissionError(f'Arquivo ainda bloqueado pelo scanner após {timeout}s: {caminho}')
             logger.debug('Arquivo ainda bloqueado, aguardando: %s', caminho.name)
             _time.sleep(3)
-    raise PermissionError(f'Arquivo ainda bloqueado pelo scanner após {timeout}s: {caminho}')
 
 
 def _copiar_para_media(caminho_arquivo: str) -> str:
