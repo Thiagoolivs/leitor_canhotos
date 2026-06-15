@@ -70,27 +70,30 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
         else:  # tipo == 'canhoto'
             canhoto = None
             try:
-                canhoto = _criar_canhoto_processando(caminho_arquivo)
+                # Copia o arquivo para MEDIA_ROOT antes de qualquer coisa
+                # para nao depender de o scanner manter o arquivo disponivel
+                canhoto, caminho_copia = _criar_canhoto_processando(caminho_arquivo)
+
+                # Roda OCR na copia permanente
+                resultado_ocr_copia = ocr_service.processar_arquivo(caminho_copia)
+                numero_nota = resultado_ocr_copia.get('numero_nota')
 
                 # Salva texto OCR mesmo que numero nao seja detectado
-                _salvar_texto_ocr(canhoto, resultado_ocr.get('texto', ''))
+                _salvar_texto_ocr(canhoto, resultado_ocr_copia.get('texto', ''))
 
                 if not numero_nota:
                     _finalizar_canhoto_erro(canhoto, 'numero_nota_nao_detectado_no_ocr')
-                    novo_caminho = canhoto_service.mover_para_erro(caminho_arquivo, 'ocr_sem_numero')
                     _logger.warning('[CANHOTO] Numero nao detectado em %s', caminho.name)
                     return {'status': 'erro', 'motivo': 'numero_nao_detectado'}
 
                 conciliacao_service = ConciliacaoService()
                 resultado = conciliacao_service.conciliar(canhoto.id, numero_nota)
-                novo_caminho = canhoto_service.mover_para_processados(caminho_arquivo, numero_nota)
-                _logger.info('[CANHOTO] Conciliado NF %s -> %s', numero_nota, novo_caminho)
+                _logger.info('[CANHOTO] Conciliado NF %s', numero_nota)
                 return {'status': 'sucesso', 'tipo': 'canhoto', 'numero': numero_nota, 'conciliado': resultado.sucesso}
 
             except Exception as exc:
                 if canhoto:
                     _finalizar_canhoto_erro(canhoto, str(exc))
-                novo_caminho = canhoto_service.mover_para_erro(caminho_arquivo, str(exc))
                 raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
     except Exception as exc:
@@ -104,6 +107,33 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
         return {'status': 'erro', 'motivo': str(exc)}
 
 
+def _copiar_para_media(caminho_arquivo: str) -> str:
+    """
+    Copia o arquivo do scanner para MEDIA_ROOT/canhotos/ imediatamente,
+    garantindo que ele fique preservado mesmo que o scanner limpe a pasta.
+    Retorna o caminho relativo ao MEDIA_ROOT (para salvar no FileField).
+    """
+    import shutil
+    from django.conf import settings
+    from pathlib import Path
+
+    origem = Path(caminho_arquivo)
+    destino_dir = Path(settings.MEDIA_ROOT) / 'canhotos'
+    destino_dir.mkdir(parents=True, exist_ok=True)
+
+    # Evita colisão de nomes: prefixo com timestamp
+    from django.utils import timezone
+    ts = timezone.now().strftime('%Y%m%d_%H%M%S_%f')
+    nome_destino = f"{ts}_{origem.name}"
+    destino = destino_dir / nome_destino
+
+    shutil.copy2(str(origem), str(destino))
+    logger.info('Arquivo copiado para media: %s -> %s', origem.name, destino)
+
+    # Retorna caminho relativo ao MEDIA_ROOT para o FileField
+    return str(Path('canhotos') / nome_destino)
+
+
 def _salvar_texto_ocr(canhoto, texto: str) -> None:
     """Helper: persist extracted OCR text on the Canhoto record."""
     if texto:
@@ -112,14 +142,24 @@ def _salvar_texto_ocr(canhoto, texto: str) -> None:
 
 
 def _criar_canhoto_processando(caminho_arquivo: str):
-    """Helper: create Canhoto record with PROCESSANDO status."""
+    """
+    Copia o arquivo para MEDIA_ROOT e cria o registro Canhoto com PROCESSANDO.
+    Retorna (canhoto, caminho_absoluto_copia).
+    """
     from repositories.canhoto_repository import CanhotoRepository
     from apps.canhotos.models import StatusProcessamento
+    from django.conf import settings
+    from pathlib import Path
+
+    caminho_relativo = _copiar_para_media(caminho_arquivo)
+    caminho_absoluto = str(Path(settings.MEDIA_ROOT) / caminho_relativo)
+
     repo = CanhotoRepository()
-    return repo.criar(
-        arquivo=caminho_arquivo,
+    canhoto = repo.criar(
+        arquivo=caminho_relativo,
         status_processamento=StatusProcessamento.PROCESSANDO,
     )
+    return canhoto, caminho_absoluto
 
 
 def _finalizar_canhoto_erro(canhoto, mensagem: str) -> None:
