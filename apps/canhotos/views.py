@@ -88,12 +88,14 @@ class ServirArquivoCanhotoView(View):
         content_type, _ = mimetypes.guess_type(str(caminho))
         content_type = content_type or 'application/octet-stream'
 
-        return FileResponse(
+        response = FileResponse(
             open(caminho, 'rb'),
             content_type=content_type,
             as_attachment=False,
-            filename=caminho.name,
         )
+        # Força exibição inline no browser (não download)
+        response['Content-Disposition'] = f'inline; filename="{caminho.name}"'
+        return response
 
 
 class ReprocessarOCRView(View):
