@@ -55,6 +55,13 @@ class Canhoto(models.Model):
         verbose_name='Números detectados na divisória',
         help_text='Lista de números sequenciais detectados em uma folha divisória.',
     )
+    notas_atendidas = models.ManyToManyField(
+        'notas.NotaFiscal',
+        blank=True,
+        related_name='canhotos_divisoria',
+        verbose_name='Notas Fiscais Atendidas (Divisória)',
+        help_text='Notas Fiscais cobertas por esta folha divisória, atribuídas manualmente.',
+    )
     pagina_numero = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name='Página (PDF original)')
     numero_barcode = models.CharField(max_length=50, blank=True, verbose_name='Número via Código de Barras')
     confianca_deteccao = models.CharField(

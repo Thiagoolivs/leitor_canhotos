@@ -224,6 +224,47 @@ class ExcluirCanhotoView(View):
         return redirect(reverse('canhotos:lista'))
 
 
+class AtribuirNotasDivisoriaView(View):
+    """
+    POST-only view for folha-divisória canhotos: attributes one or more
+    Notas Fiscais (by número) to this single canhoto record, since a divider
+    sheet legitimately covers many notas at once.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        numeros = request.POST.getlist('numeros')
+        if not numeros:
+            messages.warning(request, 'Selecione ao menos um número para atribuir a este canhoto.')
+            return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+        from services.conciliacao_service import ConciliacaoService
+        try:
+            service = ConciliacaoService()
+            resultado = service.vincular_divisoria(canhoto.id, numeros)
+            if resultado['vinculadas']:
+                messages.success(
+                    request,
+                    f"Notas Fiscais atribuídas a este canhoto: {', '.join(resultado['vinculadas'])}.",
+                )
+            if resultado['nao_encontradas']:
+                messages.warning(
+                    request,
+                    f"Nenhuma Nota Fiscal encontrada para: {', '.join(resultado['nao_encontradas'])}.",
+                )
+            if resultado['ja_finalizadas']:
+                messages.warning(
+                    request,
+                    f"Já finalizadas por outro canhoto (ignoradas): {', '.join(resultado['ja_finalizadas'])}.",
+                )
+            logger.info('Notas atribuídas a divisória: canhoto_id=%s numeros=%s', canhoto.id, numeros)
+        except Exception as exc:
+            messages.error(request, f'Erro ao atribuir notas: {exc}')
+            logger.exception('Erro ao atribuir notas à divisória %s', pk)
+        return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+
 class CorrigirNumeroView(View):
     """
     POST-only view that lets an operator manually validate/correct the

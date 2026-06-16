@@ -207,6 +207,62 @@ class ConciliacaoService:
         )
 
     @transaction.atomic
+    def vincular_divisoria(self, canhoto_id: int, numeros: list) -> dict:
+        """
+        Attribute one or more Notas Fiscais to a single divider-sheet canhoto
+        (tipo_pagina DIVISORIA/DIVISORIA_MISTA), which legitimately covers
+        many notas at once via canhoto.notas_atendidas (M2M).
+
+        For each numero: looks up the NotaFiscal, links it via notas_atendidas,
+        and marks it FINALIZADO. Numbers without a matching nota, or notas
+        already finalized by a different canhoto, are reported but skipped.
+
+        Args:
+            canhoto_id: primary key of the divider-sheet Canhoto.
+            numeros: list of invoice numbers (str) to attribute to this canhoto.
+
+        Returns:
+            dict with keys: vinculadas, nao_encontradas, ja_finalizadas (lists of str).
+
+        Raises:
+            ConciliacaoException: if the canhoto is not found.
+        """
+        canhoto = self.canhoto_repo.buscar_por_id(canhoto_id)
+        if canhoto is None:
+            raise ConciliacaoException(
+                f'Canhoto não encontrado: id={canhoto_id}',
+                canhoto_id=canhoto_id,
+            )
+
+        vinculadas, nao_encontradas, ja_finalizadas = [], [], []
+        for numero in numeros:
+            numero = (numero or '').strip()
+            if not numero:
+                continue
+            nota = self.nota_repo.buscar_por_numero(numero)
+            if nota is None:
+                nao_encontradas.append(numero)
+                continue
+            ja_atribuida = canhoto.notas_atendidas.filter(pk=nota.pk).exists()
+            if nota.status == StatusNota.FINALIZADO and not ja_atribuida:
+                ja_finalizadas.append(numero)
+                continue
+            canhoto.notas_atendidas.add(nota)
+            self.nota_repo.atualizar_status(nota, StatusNota.FINALIZADO)
+            vinculadas.append(numero)
+
+        self.logger.info(
+            'Vínculo de divisória: canhoto_id=%s vinculadas=%s nao_encontradas=%s ja_finalizadas=%s',
+            canhoto_id, vinculadas, nao_encontradas, ja_finalizadas,
+        )
+
+        return {
+            'vinculadas': vinculadas,
+            'nao_encontradas': nao_encontradas,
+            'ja_finalizadas': ja_finalizadas,
+        }
+
+    @transaction.atomic
     def desvincular(self, canhoto_id: int) -> None:
         """
         Unlink a canhoto from its nota fiscal and reset both statuses.

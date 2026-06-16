@@ -35,13 +35,52 @@
           Confira na imagem se todos os canhotos da lista foram recebidos.
         {% endif %}
       </p>
-      <div class="mb-2">
+      <div class="mb-3">
         <strong>{{ canhoto.numeros_lista_items|length }} números detectados:</strong>
         <div class="mt-1">
           {% for num in canhoto.numeros_lista_items %}
             <span class="badge bg-light text-dark border me-1 mb-1">{{ num }}</span>
           {% endfor %}
         </div>
+      </div>
+
+      {% if canhoto.notas_atendidas.all %}
+      <div class="mb-3">
+        <strong>Notas Fiscais já atribuídas a este canhoto:</strong>
+        <div class="mt-1">
+          {% for nota in canhoto.notas_atendidas.all %}
+            <a href="{% url 'notas:detalhe' nota.pk %}" class="badge bg-success text-decoration-none me-1 mb-1">
+              <i class="bi bi-check-circle me-1"></i>NF {{ nota.numero }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="border rounded p-3 bg-white">
+        <h6 class="mb-2 small fw-semibold">
+          <i class="bi bi-card-checklist me-1"></i>Quais notas esses canhotos atendem?
+        </h6>
+        <p class="small text-muted mb-2">
+          Marque os números desta folha que correspondem a Notas Fiscais já recebidas
+          e clique em atribuir — todas serão vinculadas a este mesmo canhoto.
+        </p>
+        <form method="post" action="{% url 'canhotos:atribuir_notas' canhoto.pk %}">
+          {% csrf_token %}
+          <div class="row row-cols-2 row-cols-md-3 g-1 mb-2">
+            {% for num in canhoto.numeros_lista_items %}
+            <div class="col">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="numeros" value="{{ num }}" id="num-{{ num }}">
+                <label class="form-check-label small" for="num-{{ num }}">{{ num }}</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-link-45deg me-1"></i>Atribuir Notas Selecionadas
+          </button>
+        </form>
       </div>
     </div>
   </div>
