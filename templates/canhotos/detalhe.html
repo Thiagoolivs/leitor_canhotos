@@ -21,6 +21,33 @@
   </div>
 </div>
 
+{% if canhoto.is_divisoria %}
+<div class="alert alert-info border-info shadow-sm">
+  <div class="d-flex align-items-start">
+    <i class="bi bi-layout-text-window-reverse fs-3 me-3"></i>
+    <div class="flex-grow-1">
+      <h5 class="alert-heading mb-1">Folha Divisória detectada — {{ canhoto.get_tipo_pagina_display }}</h5>
+      <p class="mb-2">
+        Esta página é um índice de controle com vários números de NF, não um canhoto único.
+        {% if canhoto.tipo_pagina == "DIVISORIA_MISTA" %}
+          Foram detectados canhotos colados nela (extraídos abaixo). <strong>Valide manualmente.</strong>
+        {% else %}
+          Confira na imagem se todos os canhotos da lista foram recebidos.
+        {% endif %}
+      </p>
+      <div class="mb-2">
+        <strong>{{ canhoto.numeros_lista_items|length }} números detectados:</strong>
+        <div class="mt-1">
+          {% for num in canhoto.numeros_lista_items %}
+            <span class="badge bg-light text-dark border me-1 mb-1">{{ num }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="row">
   <!-- Canhoto Details -->
   <div class="col-md-5">
@@ -79,6 +106,8 @@
               <span class="badge-status badge-erro">Erro</span>
             {% elif canhoto.status_processamento == "PROCESSANDO" %}
               <span class="badge bg-primary">Processando</span>
+            {% elif canhoto.status_processamento == "REVISAO" %}
+              <span class="badge bg-info text-dark"><i class="bi bi-eye me-1"></i>Revisão Manual</span>
             {% else %}
               <span class="badge bg-secondary">Pendente</span>
             {% endif %}

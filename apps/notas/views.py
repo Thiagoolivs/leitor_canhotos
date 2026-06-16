@@ -211,6 +211,12 @@ class DashboardAPIView(View):
         canhotos_media = Canhoto.objects.filter(confianca_deteccao='MEDIA').count()
         canhotos_baixa = Canhoto.objects.filter(confianca_deteccao='BAIXA').count()
 
+        # Canhotos aguardando revisão manual (divisórias, baixa confiança, etc.)
+        canhotos_revisao = Canhoto.objects.filter(status_processamento='REVISAO').count()
+        divisorias = Canhoto.objects.filter(
+            tipo_pagina__in=['DIVISORIA', 'DIVISORIA_MISTA']
+        ).count()
+
         # Alertas
         aguardando_mais_1_mes = NotaFiscal.objects.filter(
             status=StatusNota.AGUARDANDO_CANHOTO,
@@ -294,6 +300,8 @@ class DashboardAPIView(View):
                 'canhotos_alta': canhotos_alta,
                 'canhotos_media': canhotos_media,
                 'canhotos_baixa': canhotos_baixa,
+                'canhotos_revisao': canhotos_revisao,
+                'divisorias': divisorias,
                 'tendencia': tendencia,
             },
             'chart_pizza': {

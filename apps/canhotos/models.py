@@ -14,6 +14,13 @@ class StatusProcessamento(models.TextChoices):
     PROCESSANDO = 'PROCESSANDO', 'Processando'
     SUCESSO = 'SUCESSO', 'Sucesso'
     ERRO = 'ERRO', 'Erro'
+    REVISAO = 'REVISAO', 'Revisão Manual'
+
+
+class TipoPagina(models.TextChoices):
+    CANHOTO = 'CANHOTO', 'Canhoto'
+    DIVISORIA = 'DIVISORIA', 'Folha Divisória'
+    DIVISORIA_MISTA = 'DIVISORIA_MISTA', 'Divisória com Canhotos'
 
 
 class Canhoto(models.Model):
@@ -36,6 +43,17 @@ class Canhoto(models.Model):
         on_delete=models.SET_NULL,
         related_name='canhoto',
         verbose_name='Nota Fiscal Vinculada',
+    )
+    tipo_pagina = models.CharField(
+        max_length=20,
+        choices=TipoPagina.choices,
+        default=TipoPagina.CANHOTO,
+        verbose_name='Tipo de Página',
+    )
+    numeros_lista = models.TextField(
+        blank=True,
+        verbose_name='Números detectados na divisória',
+        help_text='Lista de números sequenciais detectados em uma folha divisória.',
     )
     pagina_numero = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name='Página (PDF original)')
     numero_barcode = models.CharField(max_length=50, blank=True, verbose_name='Número via Código de Barras')
@@ -67,6 +85,17 @@ class Canhoto(models.Model):
         if self.arquivo:
             return self.arquivo.name.split('/')[-1]
         return ''
+
+    @property
+    def is_divisoria(self):
+        return self.tipo_pagina in (TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA)
+
+    @property
+    def numeros_lista_items(self):
+        """Retorna os números da divisória como lista de strings."""
+        if not self.numeros_lista:
+            return []
+        return [n.strip() for n in self.numeros_lista.split(',') if n.strip()]
 
     @property
     def is_pdf(self):

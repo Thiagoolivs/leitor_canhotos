@@ -95,6 +95,12 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
 
                 # Usa processamento especializado: OCR + barcode na mesma imagem
                 resultado_ocr = ocr_service.processar_pagina_canhoto(caminho_copia)
+
+                # Folha divisória? Não concilia — marca para revisão manual.
+                tipo_pagina = resultado_ocr.get('tipo_pagina', 'CANHOTO')
+                if tipo_pagina in ('DIVISORIA', 'DIVISORIA_MISTA'):
+                    return _tratar_divisoria(canhoto, resultado_ocr, tipo_pagina)
+
                 numero_nota = resultado_ocr.get('numero_nota')
 
                 # Persiste todos os campos extraídos
@@ -272,6 +278,73 @@ def _criar_canhoto_processando(caminho_arquivo: str, pagina_numero: Optional[int
         pagina_numero=pagina_numero,
     )
     return canhoto, caminho_absoluto
+
+
+def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
+    """
+    Trata uma folha divisória detectada.
+
+    - DIVISORIA (pura): nenhuma ação automática. Marca o registro como REVISAO,
+      guarda a lista de números detectados para o usuário validar se não falta
+      nenhum canhoto. Não cria notas nem concilia.
+    - DIVISORIA_MISTA: além de marcar a página para revisão, cria um registro
+      Canhoto para cada canhoto colado detectado (mesmo arquivo), também em REVISAO,
+      para o usuário confirmar/vincular manualmente.
+    """
+    from repositories.canhoto_repository import CanhotoRepository
+    from apps.canhotos.models import StatusProcessamento, TipoPagina
+
+    repo = CanhotoRepository()
+    sequencia = resultado_ocr.get('numeros_sequencia', [])
+    numeros_lista = ', '.join(str(n) for n in sequencia)
+    texto_ocr = resultado_ocr.get('texto', '')
+
+    tipo_enum = (
+        TipoPagina.DIVISORIA_MISTA if tipo_pagina == 'DIVISORIA_MISTA' else TipoPagina.DIVISORIA
+    )
+    msg = (
+        'Folha divisória com canhotos colados — confira e valide manualmente.'
+        if tipo_pagina == 'DIVISORIA_MISTA'
+        else 'Folha divisória detectada — valide se todos os canhotos foram recebidos.'
+    )
+    repo.atualizar(
+        canhoto,
+        tipo_pagina=tipo_enum,
+        status_processamento=StatusProcessamento.REVISAO,
+        numeros_lista=numeros_lista,
+        numero_detectado='',
+        confianca_deteccao='',
+        texto_ocr=texto_ocr,
+        erro_mensagem=msg,
+    )
+
+    filhos = []
+    if tipo_pagina == 'DIVISORIA_MISTA':
+        for stub in resultado_ocr.get('numeros_canhotos', []):
+            if not stub:
+                continue
+            filho = repo.criar(
+                arquivo=str(canhoto.arquivo),
+                status_processamento=StatusProcessamento.REVISAO,
+                tipo_pagina=TipoPagina.CANHOTO,
+                numero_detectado=stub,
+                confianca_deteccao='BAIXA',
+                pagina_numero=canhoto.pagina_numero,
+                erro_mensagem='Canhoto extraído de folha divisória — confirmar manualmente.',
+            )
+            filhos.append(filho.id)
+
+    logger.info(
+        '[CANHOTO] Divisória %s registrada (id=%s): %d números, %d canhoto(s) extraído(s)',
+        tipo_pagina, canhoto.id, len(sequencia), len(filhos),
+    )
+    return {
+        'status': 'divisoria',
+        'tipo': tipo_pagina,
+        'canhoto_id': canhoto.id,
+        'numeros': sequencia,
+        'filhos': filhos,
+    }
 
 
 def _finalizar_canhoto_erro(canhoto, mensagem: str) -> None:

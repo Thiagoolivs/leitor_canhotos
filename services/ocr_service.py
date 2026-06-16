@@ -53,6 +53,24 @@ _RE_VALOR_TOTAL_FALLBACK = re.compile(
 # Mínimo de caracteres para considerar que pdfplumber extraiu texto útil do PDF
 _MIN_CHARS_PDF_DIGITAL = 100
 
+# ---------------------------------------------------------------------------
+# Detecção de folhas divisórias (índices de controle dos canhotos)
+# ---------------------------------------------------------------------------
+# Uma folha divisória lista vários números de NF sequenciais (ex: 151211..151220),
+# às vezes com canhotos recortados colados nela. Palavras-chave que indicam a
+# presença de um canhoto físico colado (DANFE/recibo):
+_RE_STUB_KEYWORDS = re.compile(
+    r'RECEBEMOS\s+DE|DATA\s+DE\s+RECEBIMENTO|ASSINATURA\s+DO\s+RECEBEDOR|'
+    r'IDENTIFICA[CÇ][AÃ]O\s+E\s+ASSINATURA',
+    re.IGNORECASE,
+)
+# Número impresso do canhoto colado, ex: "N. 00015995 SÉRIE 3"
+_RE_NUMERO_STUB = re.compile(r'N[º°.\s]+0*(\d{4,9})\s*S[ÉE]RIE', re.IGNORECASE)
+# Número isolado de 5 a 9 dígitos (sem fazer parte de um número maior)
+_RE_NUMERO_ISOLADO = re.compile(r'(?<!\d)(\d{5,9})(?!\d)')
+# Mínimo de números consecutivos para classificar a página como divisória
+_MIN_SEQUENCIA_DIVISORIA = 4
+
 
 class OCRService:
     """
@@ -330,6 +348,104 @@ class OCRService:
 
         return candidatos
 
+    # ------------------------------------------------------------------
+    # Classificação de página: canhoto x folha divisória
+    # ------------------------------------------------------------------
+
+    def detectar_sequencia_numeros(self, texto: str, minimo: int = _MIN_SEQUENCIA_DIVISORIA) -> tuple:
+        """
+        Detecta um agrupamento de números de NF próximos (uma folha divisória).
+
+        Folhas divisórias listam vários números de NF em ordem (ex: 151211..151220).
+        Números próximos (diferença <= 3) são agrupados em um cluster, tolerando
+        falhas de OCR e números cobertos por canhotos colados.
+
+        Retorna uma tupla (completa, faltantes):
+        - completa: lista contígua do menor ao maior número do cluster
+                    (ex: [151991, 151992, ..., 152000])
+        - faltantes: números dentro do intervalo que o OCR NÃO leu diretamente
+                     (provavelmente cobertos por canhotos colados, ex: [151995, 151996])
+        Retorna ([], []) se não houver cluster com pelo menos `minimo` números.
+        """
+        if not texto:
+            return [], []
+        numeros = sorted({int(m) for m in _RE_NUMERO_ISOLADO.findall(texto)})
+        if len(numeros) < minimo:
+            return [], []
+
+        # Agrupa números próximos (gap <= 3) em clusters
+        clusters: list = []
+        atual = [numeros[0]]
+        for n in numeros[1:]:
+            if n - atual[-1] <= 3:
+                atual.append(n)
+            else:
+                clusters.append(atual)
+                atual = [n]
+        clusters.append(atual)
+
+        maior = max(clusters, key=len)
+        if len(maior) < minimo:
+            return [], []
+
+        completa = list(range(maior[0], maior[-1] + 1))
+        lidos = set(maior)
+        faltantes = [n for n in completa if n not in lidos]
+        return completa, faltantes
+
+    def classificar_pagina(self, texto: str) -> dict:
+        """
+        Classifica a página a partir do texto OCR.
+
+        Retorna dict com:
+        - tipo_pagina: 'CANHOTO' | 'DIVISORIA' | 'DIVISORIA_MISTA'
+        - numeros_sequencia: lista contígua de números da divisória (vazia se for canhoto)
+        - numeros_faltantes: números do intervalo cobertos por canhotos colados
+        - numeros_canhotos: números de canhotos colados detectados (faltantes + impressos)
+        """
+        completa, faltantes = self.detectar_sequencia_numeros(texto)
+        if not completa:
+            return {
+                'tipo_pagina': 'CANHOTO',
+                'numeros_sequencia': [], 'numeros_faltantes': [], 'numeros_canhotos': [],
+            }
+
+        # Números impressos de canhotos colados ("N. 00015995 SÉRIE 3")
+        stubs_impressos = []
+        vistos = set()
+        for m in _RE_NUMERO_STUB.findall(texto or ''):
+            num = str(int(m))
+            if num not in vistos:
+                vistos.add(num)
+                stubs_impressos.append(num)
+
+        tem_keyword = bool(_RE_STUB_KEYWORDS.search(texto or ''))
+
+        # Sinais de canhotos colados: números faltando na sequência (cobertos),
+        # número impresso de canhoto, ou palavras-chave de recibo.
+        if faltantes or stubs_impressos or tem_keyword:
+            # Prioriza os números faltantes (NF reais da sequência) como canhotos
+            numeros_canhotos = [str(n) for n in faltantes] or stubs_impressos
+            self.logger.info(
+                'Folha DIVISÓRIA MISTA: %d números (%s..%s), canhotos colados em %s',
+                len(completa), completa[0], completa[-1], numeros_canhotos,
+            )
+            return {
+                'tipo_pagina': 'DIVISORIA_MISTA',
+                'numeros_sequencia': completa,
+                'numeros_faltantes': faltantes,
+                'numeros_canhotos': numeros_canhotos,
+            }
+
+        self.logger.info(
+            'Folha DIVISÓRIA PURA: %d números (%s..%s)',
+            len(completa), completa[0], completa[-1],
+        )
+        return {
+            'tipo_pagina': 'DIVISORIA',
+            'numeros_sequencia': completa, 'numeros_faltantes': [], 'numeros_canhotos': [],
+        }
+
     def processar_pagina_canhoto(self, caminho: str) -> dict:
         """
         Processamento especializado para páginas de canhoto (PDF ou imagem).
@@ -353,6 +469,8 @@ class OCRService:
             'candidatos_ocr': [], 'confianca': 'BAIXA',
             'data_recebimento': None,
             'data_emissao': None, 'destinatario': '', 'valor_total': None,
+            'tipo_pagina': 'CANHOTO', 'numeros_sequencia': [],
+            'numeros_faltantes': [], 'numeros_canhotos': [],
         }
 
         try:
@@ -372,6 +490,20 @@ class OCRService:
         except Exception as exc:
             texto = ''
             self.logger.warning('OCR falhou na página: %s', exc)
+
+        # Classificação: a página é um canhoto normal ou uma folha divisória?
+        classificacao = self.classificar_pagina(texto)
+        if classificacao['tipo_pagina'] != 'CANHOTO':
+            return {
+                **_vazio,
+                'texto': texto,
+                'tipo_pagina': classificacao['tipo_pagina'],
+                'numeros_sequencia': classificacao['numeros_sequencia'],
+                'numeros_faltantes': classificacao['numeros_faltantes'],
+                'numeros_canhotos': classificacao['numeros_canhotos'],
+                'sucesso': True,
+                'erro': None,
+            }
 
         # Barcode (na mesma imagem, sem recusar)
         numero_barcode = self._ler_barcode_imagem(imagem)

@@ -97,6 +97,9 @@
             </td>
             <td class="text-center text-muted small">{{ canhoto.pagina_numero|default:"—" }}</td>
             <td>
+              {% if canhoto.is_divisoria %}
+                <span class="text-muted small">{{ canhoto.numeros_lista_items|length }} nº ({{ canhoto.numeros_lista_items|first }}…{{ canhoto.numeros_lista_items|last }})</span>
+              {% else %}
               {{ canhoto.numero_detectado|default:"—" }}
               {% if canhoto.confianca_deteccao == "ALTA" %}
                 <span class="badge bg-success ms-1" title="Alta confiança">✓</span>
@@ -104,6 +107,7 @@
                 <span class="badge bg-warning text-dark ms-1" title="Média confiança">~</span>
               {% elif canhoto.confianca_deteccao == "BAIXA" %}
                 <span class="badge bg-danger ms-1" title="Baixa confiança">!</span>
+              {% endif %}
               {% endif %}
             </td>
             <td>
@@ -113,8 +117,15 @@
                 <span class="badge-status badge-erro">Erro</span>
               {% elif canhoto.status_processamento == "PROCESSANDO" %}
                 <span class="badge bg-primary">Processando</span>
+              {% elif canhoto.status_processamento == "REVISAO" %}
+                <span class="badge bg-info text-dark"><i class="bi bi-eye me-1"></i>Revisão</span>
               {% else %}
                 <span class="badge bg-secondary">Pendente</span>
+              {% endif %}
+              {% if canhoto.is_divisoria %}
+                <span class="badge bg-dark ms-1" title="{{ canhoto.get_tipo_pagina_display }}">
+                  <i class="bi bi-layout-text-window-reverse me-1"></i>Divisória
+                </span>
               {% endif %}
             </td>
             <td>
