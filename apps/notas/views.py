@@ -37,7 +37,13 @@ class NotaFiscalListView(PersistedFilterMixin, ListView):
     paginate_by = 20
     session_key = 'notas_filtros'
 
-    def get_queryset(self):
+    @staticmethod
+    def construir_filterset_e_queryset(querydict):
+        """
+        Builds the NotaFiscalFilterSet and the resulting filtered+ordered
+        queryset for a given querydict. Shared with NotaFiscalDetailView so
+        "anterior/próximo" navigation follows the same filters/order in use.
+        """
         # numero é normalizado para dígitos puros por formatar_numero_nota(), mas
         # notas criadas manualmente via formulário podem conter texto; protege
         # a ordenação numérica removendo não-dígitos antes do cast.
@@ -54,11 +60,17 @@ class NotaFiscalListView(PersistedFilterMixin, ListView):
                 output_field=IntegerField(),
             ),
         ).select_related()
-        self.filterset = NotaFiscalFilterSet(self.request.GET, queryset=queryset)
-        ordem = self.request.GET.get('ordem', 'desc')
+        filterset = NotaFiscalFilterSet(querydict, queryset=queryset)
+        ordem = querydict.get('ordem', 'desc')
         if ordem == 'asc':
-            return self.filterset.qs.order_by(F('numero_int').asc(nulls_last=True))
-        return self.filterset.qs.order_by(F('numero_int').desc(nulls_last=True))
+            qs_ordenado = filterset.qs.order_by(F('numero_int').asc(nulls_last=True))
+        else:
+            qs_ordenado = filterset.qs.order_by(F('numero_int').desc(nulls_last=True))
+        return filterset, qs_ordenado
+
+    def get_queryset(self):
+        self.filterset, qs_ordenado = self.construir_filterset_e_queryset(self.request.GET)
+        return qs_ordenado
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -83,7 +95,26 @@ class NotaFiscalDetailView(DetailView):
         context = super().get_context_data(**kwargs)
         nota = self.object
         context['canhoto'] = getattr(nota, 'canhoto', None)
+        context['prev_id'], context['next_id'] = self._vizinhos()
         return context
+
+    def _vizinhos(self):
+        """
+        Finds the previous/next nota IDs using the same filters/order the
+        user had active on the list page (persisted in session).
+        """
+        from django.http import QueryDict
+        querystring = self.request.session.get('notas_filtros', '')
+        querydict = QueryDict(querystring)
+        _, qs_ordenado = NotaFiscalListView.construir_filterset_e_queryset(querydict)
+        ids = list(qs_ordenado.values_list('pk', flat=True))
+        try:
+            indice = ids.index(self.object.pk)
+        except ValueError:
+            return None, None
+        anterior = ids[indice - 1] if indice > 0 else None
+        proximo = ids[indice + 1] if indice < len(ids) - 1 else None
+        return anterior, proximo
 
 
 class NotaFiscalCreateView(CreateView):

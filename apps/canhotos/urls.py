@@ -11,6 +11,7 @@ app_name = 'canhotos'
 
 urlpatterns = [
     path('', views.CanhotoListView.as_view(), name='lista'),
+    path('revisao/', views.RevisaoListView.as_view(), name='revisao'),
     path('<int:pk>/', views.CanhotoDetailView.as_view(), name='detalhe'),
     path('<int:pk>/arquivo/', views.ServirArquivoCanhotoView.as_view(), name='arquivo'),
     path('<int:pk>/reprocessar/', views.ReprocessarOCRView.as_view(), name='reprocessar'),

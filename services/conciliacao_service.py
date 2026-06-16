@@ -251,15 +251,29 @@ class ConciliacaoService:
             self.nota_repo.atualizar_status(nota, StatusNota.FINALIZADO)
             vinculadas.append(numero)
 
+        # Se todos os números detectados na divisória já têm uma nota
+        # atribuída, a revisão manual está concluída — marca como SUCESSO
+        # para que o canhoto saia da fila de "aguardando revisão".
+        revisao_concluida = False
+        numeros_esperados = canhoto.numeros_lista_items
+        if numeros_esperados and canhoto.notas_atendidas.count() >= len(numeros_esperados):
+            self.canhoto_repo.atualizar(
+                canhoto,
+                status_processamento=StatusProcessamento.SUCESSO,
+                erro_mensagem='',
+            )
+            revisao_concluida = True
+
         self.logger.info(
-            'Vínculo de divisória: canhoto_id=%s vinculadas=%s nao_encontradas=%s ja_finalizadas=%s',
-            canhoto_id, vinculadas, nao_encontradas, ja_finalizadas,
+            'Vínculo de divisória: canhoto_id=%s vinculadas=%s nao_encontradas=%s ja_finalizadas=%s revisao_concluida=%s',
+            canhoto_id, vinculadas, nao_encontradas, ja_finalizadas, revisao_concluida,
         )
 
         return {
             'vinculadas': vinculadas,
             'nao_encontradas': nao_encontradas,
             'ja_finalizadas': ja_finalizadas,
+            'revisao_concluida': revisao_concluida,
         }
 
     @transaction.atomic

@@ -5,6 +5,17 @@
 {% block nav_notas %}active{% endblock %}
 
 {% block content %}
+{% if prev_id %}
+<a href="{% url 'notas:detalhe' prev_id %}" class="nav-flutuante nav-flutuante-esq" title="Nota anterior (#{{ prev_id }})">
+  <i class="bi bi-chevron-left"></i>
+</a>
+{% endif %}
+{% if next_id %}
+<a href="{% url 'notas:detalhe' next_id %}" class="nav-flutuante nav-flutuante-dir" title="Próxima nota (#{{ next_id }})">
+  <i class="bi bi-chevron-right"></i>
+</a>
+{% endif %}
+
 <div class="row mb-3 align-items-center">
   <div class="col">
     <nav aria-label="breadcrumb">
@@ -14,12 +25,22 @@
       </ol>
     </nav>
   </div>
-  <div class="col-auto">
-    <a href="{% url 'notas:editar' nota.pk %}" class="btn btn-outline-secondary btn-sm me-2">
+  <div class="col-auto d-flex gap-2">
+    {% if prev_id %}
+    <a href="{% url 'notas:detalhe' prev_id %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Anterior
+    </a>
+    {% endif %}
+    {% if next_id %}
+    <a href="{% url 'notas:detalhe' next_id %}" class="btn btn-outline-secondary btn-sm">
+      Próximo<i class="bi bi-arrow-right ms-1"></i>
+    </a>
+    {% endif %}
+    <a href="{% url 'notas:editar' nota.pk %}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-pencil me-1"></i>Editar
     </a>
     <a href="{% url 'notas:lista' %}" class="btn btn-outline-primary btn-sm">
-      <i class="bi bi-arrow-left me-1"></i>Voltar
+      <i class="bi bi-list-ul me-1"></i>Voltar à lista
     </a>
   </div>
 </div>

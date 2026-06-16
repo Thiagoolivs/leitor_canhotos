@@ -38,12 +38,14 @@ class CanhotoListView(PersistedFilterMixin, ListView):
     template_name = 'canhotos/lista.html'
     context_object_name = 'canhotos'
     paginate_by = 20
-    session_key = 'canhotos_filtros'
-
-    def get_queryset(self):
-        # numero_detectado pode conter texto/vazio; remove tudo que não é
-        # dígito antes de converter para inteiro, tratando o resultado vazio
-        # como NULL para ordenar os não-numéricos sempre por último.
+    @staticmethod
+    def construir_filterset_e_queryset(querydict):
+        """
+        Builds the CanhotoFilterSet and the resulting filtered+ordered queryset
+        for a given querydict. Shared with CanhotoDetailView so "anterior/
+        próximo" navigation follows the same filters and order the user was
+        browsing with.
+        """
         numero_limpo = Func(
             F('numero_detectado'), Value(r'\D'), Value(''), Value('g'),
             function='regexp_replace', output_field=CharField(),
@@ -57,11 +59,17 @@ class CanhotoListView(PersistedFilterMixin, ListView):
                 output_field=IntegerField(),
             ),
         ).select_related('nota')
-        self.filterset = CanhotoFilterSet(self.request.GET, queryset=queryset)
-        ordem = self.request.GET.get('ordem', 'desc')
+        filterset = CanhotoFilterSet(querydict, queryset=queryset)
+        ordem = querydict.get('ordem', 'desc')
         if ordem == 'asc':
-            return self.filterset.qs.order_by(F('numero_int').asc(nulls_last=True))
-        return self.filterset.qs.order_by(F('numero_int').desc(nulls_last=True))
+            qs_ordenado = filterset.qs.order_by(F('numero_int').asc(nulls_last=True))
+        else:
+            qs_ordenado = filterset.qs.order_by(F('numero_int').desc(nulls_last=True))
+        return filterset, qs_ordenado
+
+    def get_queryset(self):
+        self.filterset, qs_ordenado = self.construir_filterset_e_queryset(self.request.GET)
+        return qs_ordenado
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -88,7 +96,27 @@ class CanhotoDetailView(DetailView):
         context['corrigir_form'] = CorrigirNumeroForm(initial={
             'numero_detectado': self.object.numero_detectado,
         })
+        context['prev_id'], context['next_id'] = self._vizinhos()
         return context
+
+    def _vizinhos(self):
+        """
+        Finds the previous/next canhoto IDs using the same filters/order the
+        user had active on the list page (persisted in session), so
+        "Anterior"/"Próximo" continue browsing the same filtered set.
+        """
+        from django.http import QueryDict
+        querystring = self.request.session.get('canhotos_filtros', '')
+        querydict = QueryDict(querystring)
+        _, qs_ordenado = CanhotoListView.construir_filterset_e_queryset(querydict)
+        ids = list(qs_ordenado.values_list('pk', flat=True))
+        try:
+            indice = ids.index(self.object.pk)
+        except ValueError:
+            return None, None
+        anterior = ids[indice - 1] if indice > 0 else None
+        proximo = ids[indice + 1] if indice < len(ids) - 1 else None
+        return anterior, proximo
 
 
 @method_decorator(xframe_options_sameorigin, name='get')
@@ -266,11 +294,43 @@ class AtribuirNotasDivisoriaView(View):
                     request,
                     f"Já finalizadas por outro canhoto (ignoradas): {', '.join(resultado['ja_finalizadas'])}.",
                 )
+            if resultado['revisao_concluida']:
+                messages.success(request, f'Revisão do canhoto {canhoto.id} concluída — todas as notas foram atribuídas.')
             logger.info('Notas atribuídas a divisória: canhoto_id=%s numeros=%s', canhoto.id, numeros)
         except Exception as exc:
             messages.error(request, f'Erro ao atribuir notas: {exc}')
             logger.exception('Erro ao atribuir notas à divisória %s', pk)
         return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+
+class RevisaoListView(View):
+    """
+    Dedicated "Revisão" tab: groups divider-sheet canhotos by review state so
+    operators can find pending validations without digging through filters.
+
+    - aguardando: tipo_pagina divisória with status_processamento REVISAO.
+    - revisados: tipo_pagina divisória already resolved (status SUCESSO),
+      i.e. all detected numbers were attributed to notas.
+    """
+    http_method_names = ['get']
+
+    def get(self, request):
+        from django.shortcuts import render
+        from apps.canhotos.models import TipoPagina
+
+        base = Canhoto.objects.filter(
+            tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA],
+        ).select_related().order_by('-updated_at')
+
+        aguardando = base.filter(status_processamento=StatusProcessamento.REVISAO)
+        revisados = base.filter(status_processamento=StatusProcessamento.SUCESSO)
+
+        return render(request, 'canhotos/revisao.html', {
+            'aguardando': aguardando,
+            'revisados': revisados,
+            'total_aguardando': aguardando.count(),
+            'total_revisados': revisados.count(),
+        })
 
 
 class CorrigirNumeroView(View):
