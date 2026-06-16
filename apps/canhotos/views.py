@@ -133,7 +133,9 @@ class ReprocessarOCRView(View):
         canhoto = get_object_or_404(Canhoto, pk=pk)
         from tasks.ocr_tasks import reprocessar_canhoto
         try:
-            reprocessar_canhoto.delay(canhoto.id)
+            # Roteado para a fila 'prioridade' para furar a fila de processamento
+            # automático (notas/canhotos) — ação manual do usuário deve ser rápida.
+            reprocessar_canhoto.apply_async(args=[canhoto.id], queue='prioridade')
             canhoto.status_processamento = StatusProcessamento.PENDENTE
             canhoto.erro_mensagem = ''
             canhoto.save(update_fields=['status_processamento', 'erro_mensagem', 'updated_at'])

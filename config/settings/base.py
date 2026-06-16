@@ -147,11 +147,14 @@ CELERY_ACKS_LATE = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 
-# Filas separadas: notas têm prioridade sobre canhotos.
+# Filas separadas: a ordem na flag -Q define a prioridade de consumo no Redis.
 # Iniciar o worker com:
-#   celery -A config.celery_app worker --pool=solo -Q notas,canhotos --loglevel=info
-# O worker consome a fila 'notas' primeiro; só vai para 'canhotos' quando ela esvaziar.
+#   celery -A config.celery_app worker --pool=solo -Q prioridade,notas,canhotos,celery --loglevel=info
+# O worker consome 'prioridade' primeiro, depois 'notas', depois 'canhotos', e só
+# por fim a fila padrão 'celery'. Ações manuais do usuário (ex.: reprocessar OCR)
+# são roteadas para 'prioridade' para furar a fila de processamento automático.
 CELERY_TASK_QUEUES = {
+    'prioridade': {'exchange': 'prioridade', 'routing_key': 'prioridade'},
     'notas': {'exchange': 'notas', 'routing_key': 'notas'},
     'canhotos': {'exchange': 'canhotos', 'routing_key': 'canhotos'},
     'celery': {'exchange': 'celery', 'routing_key': 'celery'},
