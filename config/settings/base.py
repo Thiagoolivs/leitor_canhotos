@@ -286,6 +286,29 @@ NOTA_NUMBER_PATTERNS = [
 _LOGS_DIR = Path(config('LOGS_DIR', default=str(BASE_DIR / 'logs')))
 _LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def _detectar_processo() -> str:
+    """
+    Identifica o papel do processo atual para que cada um escreva no seu
+    próprio arquivo de log. No Windows, RotatingFileHandler não consegue
+    rotacionar um arquivo aberto por outro processo (WinError 32), então
+    compartilhar o mesmo log entre runserver/celery/monitor causa erros.
+    """
+    import sys
+    argv = ' '.join(sys.argv).lower()
+    if 'scanner_monitor' in argv:
+        return 'monitor'
+    if 'celery' in argv:
+        return 'celery'
+    if 'runserver' in argv:
+        return 'web'
+    return 'app'
+
+
+_PROC = config('LOG_PROCESS_NAME', default=_detectar_processo())
+_LOG_FILE = os.path.join(str(_LOGS_DIR), f'leitor_canhotos.{_PROC}.log')
+_ERROR_LOG_FILE = os.path.join(str(_LOGS_DIR), f'errors.{_PROC}.log')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -305,18 +328,22 @@ LOGGING = {
         },
         'file': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(config('LOGS_DIR', default=str(BASE_DIR / 'logs')), 'leitor_canhotos.log'),
+            'filename': _LOG_FILE,
             'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'backupCount': 5,
             'formatter': 'structured',
+            'encoding': 'utf-8',
+            'delay': True,
         },
         'error_file': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(config('LOGS_DIR', default=str(BASE_DIR / 'logs')), 'errors.log'),
+            'filename': _ERROR_LOG_FILE,
             'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'backupCount': 5,
             'formatter': 'structured',
             'level': 'ERROR',
+            'encoding': 'utf-8',
+            'delay': True,
         },
     },
     'root': {
