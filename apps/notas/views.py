@@ -14,8 +14,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Count
-from django.db.models.functions import TruncMonth
+from django.db.models import Case, CharField, Count, F, Func, IntegerField, Value, When
+from django.db.models.functions import Cast, TruncMonth
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, View
 
 from apps.notas.forms import NotaFiscalFilterSet, NotaFiscalForm
@@ -35,14 +35,33 @@ class NotaFiscalListView(ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        queryset = NotaFiscal.objects.all().select_related()
+        # numero é normalizado para dígitos puros por formatar_numero_nota(), mas
+        # notas criadas manualmente via formulário podem conter texto; protege
+        # a ordenação numérica removendo não-dígitos antes do cast.
+        numero_limpo = Func(
+            F('numero'), Value(r'\D'), Value(''), Value('g'),
+            function='regexp_replace', output_field=CharField(),
+        )
+        queryset = NotaFiscal.objects.annotate(
+            numero_limpo=numero_limpo,
+        ).annotate(
+            numero_int=Case(
+                When(numero_limpo='', then=Value(None)),
+                default=Cast('numero_limpo', IntegerField()),
+                output_field=IntegerField(),
+            ),
+        ).select_related()
         self.filterset = NotaFiscalFilterSet(self.request.GET, queryset=queryset)
-        return self.filterset.qs
+        ordem = self.request.GET.get('ordem', 'desc')
+        if ordem == 'asc':
+            return self.filterset.qs.order_by(F('numero_int').asc(nulls_last=True))
+        return self.filterset.qs.order_by(F('numero_int').desc(nulls_last=True))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['filterset'] = self.filterset
         context['total_count'] = self.filterset.qs.count()
+        context['ordem'] = self.request.GET.get('ordem', 'desc')
         return context
 
 
@@ -119,6 +138,31 @@ class NotaFiscalUpdateView(UpdateView):
         return context
 
 
+class BuscarNotaAPIView(View):
+    """
+    JSON search endpoint used by the manual-link search box on the canhoto
+    detail page. Searches NotaFiscal by partial numero match (icontains).
+    """
+
+    def get(self, request):
+        termo = request.GET.get('q', '').strip()
+        if len(termo) < 2:
+            return JsonResponse({'resultados': []})
+
+        notas = NotaFiscal.objects.filter(numero__icontains=termo).order_by('-created_at')[:10]
+        resultados = [
+            {
+                'id': nota.id,
+                'numero': nota.numero,
+                'status': nota.status,
+                'destinatario': nota.destinatario,
+                'vinculada': hasattr(nota, 'canhoto') and nota.canhoto is not None,
+            }
+            for nota in notas
+        ]
+        return JsonResponse({'resultados': resultados})
+
+
 class StatusCountsView(View):
     """Returns current NotaFiscal status counts as JSON for frontend polling."""
 
@@ -161,6 +205,11 @@ class DashboardAPIView(View):
         finalizado = NotaFiscal.objects.filter(status=StatusNota.FINALIZADO).count()
         erro = NotaFiscal.objects.filter(status=StatusNota.ERRO).count()
         canhotos_sem_nota = Canhoto.objects.filter(nota__isnull=True).count()
+
+        # Distribuição de confiança de detecção dos canhotos
+        canhotos_alta = Canhoto.objects.filter(confianca_deteccao='ALTA').count()
+        canhotos_media = Canhoto.objects.filter(confianca_deteccao='MEDIA').count()
+        canhotos_baixa = Canhoto.objects.filter(confianca_deteccao='BAIXA').count()
 
         # Alertas
         aguardando_mais_1_mes = NotaFiscal.objects.filter(
@@ -242,6 +291,9 @@ class DashboardAPIView(View):
                 'aguardando_mais_1_mes': aguardando_mais_1_mes,
                 'sem_correspondencia_3_meses': sem_correspondencia_3_meses,
                 'canhotos_sem_nota': canhotos_sem_nota,
+                'canhotos_alta': canhotos_alta,
+                'canhotos_media': canhotos_media,
+                'canhotos_baixa': canhotos_baixa,
                 'tendencia': tendencia,
             },
             'chart_pizza': {

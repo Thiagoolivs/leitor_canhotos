@@ -12,13 +12,15 @@ import mimetypes
 import os
 
 from django.contrib import messages
+from django.db.models import Case, CharField, F, Func, IntegerField, Value, When
+from django.db.models.functions import Cast
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy, reverse
 from django.views import View
 from django.views.generic import ListView, DetailView
 
-from apps.canhotos.forms import CanhotoFilterSet, VincularManualForm
+from apps.canhotos.forms import CanhotoFilterSet, CorrigirNumeroForm, VincularManualForm
 from apps.canhotos.models import Canhoto, StatusProcessamento
 
 logger = logging.getLogger(__name__)
@@ -34,14 +36,33 @@ class CanhotoListView(ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        queryset = Canhoto.objects.all().select_related('nota')
+        # numero_detectado pode conter texto/vazio; remove tudo que não é
+        # dígito antes de converter para inteiro, tratando o resultado vazio
+        # como NULL para ordenar os não-numéricos sempre por último.
+        numero_limpo = Func(
+            F('numero_detectado'), Value(r'\D'), Value(''), Value('g'),
+            function='regexp_replace', output_field=CharField(),
+        )
+        queryset = Canhoto.objects.annotate(
+            numero_limpo=numero_limpo,
+        ).annotate(
+            numero_int=Case(
+                When(numero_limpo='', then=Value(None)),
+                default=Cast('numero_limpo', IntegerField()),
+                output_field=IntegerField(),
+            ),
+        ).select_related('nota')
         self.filterset = CanhotoFilterSet(self.request.GET, queryset=queryset)
-        return self.filterset.qs
+        ordem = self.request.GET.get('ordem', 'desc')
+        if ordem == 'asc':
+            return self.filterset.qs.order_by(F('numero_int').asc(nulls_last=True))
+        return self.filterset.qs.order_by(F('numero_int').desc(nulls_last=True))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['filterset'] = self.filterset
         context['total_count'] = self.filterset.qs.count()
+        context['ordem'] = self.request.GET.get('ordem', 'desc')
         return context
 
 
@@ -59,6 +80,9 @@ class CanhotoDetailView(DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['vincular_form'] = VincularManualForm()
+        context['corrigir_form'] = CorrigirNumeroForm(initial={
+            'numero_detectado': self.object.numero_detectado,
+        })
         return context
 
 
@@ -148,6 +172,35 @@ class VincularManualView(View):
             except Exception as exc:
                 messages.error(request, f'Erro ao vincular: {exc}')
                 logger.exception('Erro ao vincular manualmente canhoto %s a nota %s', pk, nota.id)
+        else:
+            for field, errs in form.errors.items():
+                for err in errs:
+                    messages.error(request, f'{field}: {err}')
+        return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+
+class CorrigirNumeroView(View):
+    """
+    POST-only view that lets an operator manually validate/correct the
+    numero_detectado of a canhoto (typically one with MEDIA/BAIXA confidence
+    or no detection at all). Marks confianca_deteccao as ALTA since a human
+    confirmed it. Does not auto-link to a nota — use VincularManualView for that.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        form = CorrigirNumeroForm(request.POST)
+        if form.is_valid():
+            numero = form.cleaned_data['numero_detectado']
+            canhoto.numero_detectado = numero
+            canhoto.confianca_deteccao = 'ALTA'
+            canhoto.save(update_fields=['numero_detectado', 'confianca_deteccao', 'updated_at'])
+            messages.success(
+                request,
+                f'Número do canhoto {canhoto.id} corrigido manualmente para {numero}.',
+            )
+            logger.info('Número corrigido manualmente: canhoto_id=%s numero=%s', canhoto.id, numero)
         else:
             for field, errs in form.errors.items():
                 for err in errs:

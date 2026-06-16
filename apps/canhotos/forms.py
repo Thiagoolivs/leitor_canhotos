@@ -13,24 +13,50 @@ from apps.notas.models import NotaFiscal, StatusNota
 
 
 class VincularManualForm(forms.Form):
-    nota = forms.ModelChoiceField(
-        queryset=NotaFiscal.objects.filter(status=StatusNota.AGUARDANDO_CANHOTO),
+    """
+    Vínculo manual via busca numérica: o operador digita o número da NF em um
+    campo de texto com autocomplete (JS), que preenche nota_id ao selecionar
+    um resultado. Não usa dropdown/lista pois o volume de notas é grande.
+    """
+    nota_id = forms.IntegerField(
         label='Nota Fiscal',
-        empty_label='Selecione uma Nota Fiscal...',
-        widget=forms.Select(attrs={'class': 'form-select'}),
-        help_text='Apenas notas com status "Aguardando Canhoto" são exibidas.',
+        widget=forms.HiddenInput(),
+        error_messages={'required': 'Pesquise e selecione uma Nota Fiscal antes de vincular.'},
     )
 
-    def clean_nota(self):
-        nota = self.cleaned_data.get('nota')
-        if nota is None:
-            raise forms.ValidationError('Selecione uma nota fiscal válida.')
-        # Check if nota already has a canhoto linked
+    def clean_nota_id(self):
+        nota_id = self.cleaned_data.get('nota_id')
+        try:
+            nota = NotaFiscal.objects.get(pk=nota_id)
+        except NotaFiscal.DoesNotExist:
+            raise forms.ValidationError('Nota fiscal não encontrada.')
         if hasattr(nota, 'canhoto') and nota.canhoto is not None:
             raise forms.ValidationError(
                 f'A nota {nota.numero} já possui um canhoto vinculado (ID: {nota.canhoto.id}).'
             )
-        return nota
+        self.cleaned_data['nota'] = nota
+        return nota_id
+
+
+class CorrigirNumeroForm(forms.Form):
+    """
+    Form para validar/corrigir manualmente o número detectado de um canhoto
+    com confiança MEDIA ou BAIXA (ou não detectado).
+    """
+    numero_detectado = forms.CharField(
+        label='Número Correto',
+        max_length=50,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control form-control-sm flex-grow-1',
+            'placeholder': 'Digite o número correto da NF...',
+        }),
+    )
+
+    def clean_numero_detectado(self):
+        numero = self.cleaned_data.get('numero_detectado', '').strip()
+        if not numero:
+            raise forms.ValidationError('Informe um número válido.')
+        return numero
 
 
 SEM_VINCULO_CHOICES = [
@@ -59,6 +85,12 @@ class CanhotoFilterSet(django_filters.FilterSet):
         empty_label=None,
         method='filtrar_vinculo',
     )
+    confianca_deteccao = django_filters.ChoiceFilter(
+        choices=[('', 'Todas')] + [('ALTA', 'Alta'), ('MEDIA', 'Média'), ('BAIXA', 'Baixa')],
+        label='Confiança',
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        empty_label=None,
+    )
 
     def filtrar_vinculo(self, queryset, name, value):
         if value == 'sim':
@@ -69,4 +101,4 @@ class CanhotoFilterSet(django_filters.FilterSet):
 
     class Meta:
         model = Canhoto
-        fields = ['numero_detectado', 'status_processamento', 'sem_vinculo']
+        fields = ['numero_detectado', 'status_processamento', 'sem_vinculo', 'confianca_deteccao']

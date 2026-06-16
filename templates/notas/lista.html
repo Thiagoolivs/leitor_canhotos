@@ -69,6 +69,13 @@
           <label class="form-label small fw-semibold">Status</label>
           {{ filterset.form.status }}
         </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Ordenar por Número</label>
+          <select name="ordem" class="form-select">
+            <option value="desc" {% if ordem == "desc" %}selected{% endif %}>Maior → Menor</option>
+            <option value="asc" {% if ordem == "asc" %}selected{% endif %}>Menor → Maior</option>
+          </select>
+        </div>
       </div>
       <div class="row mt-2">
         <div class="col">

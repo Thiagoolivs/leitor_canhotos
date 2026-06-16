@@ -129,16 +129,38 @@
           </button>
         </form>
 
+        <!-- Corrigir Número Manualmente -->
+        <div class="border rounded p-3 bg-light mb-3">
+          <h6 class="mb-2 small fw-semibold">
+            <i class="bi bi-pencil-square me-1"></i>Inserir/Corrigir Número
+          </h6>
+          <form method="post" action="{% url 'canhotos:corrigir' canhoto.pk %}" class="d-flex gap-2">
+            {% csrf_token %}
+            {{ corrigir_form.numero_detectado }}
+            <button type="submit" class="btn btn-outline-success btn-sm flex-shrink-0">
+              <i class="bi bi-check-lg"></i> Validar
+            </button>
+          </form>
+          <small class="text-muted">Marca o número como validado manualmente (Alta confiança).</small>
+        </div>
+
         <!-- Vincular Manualmente -->
         {% if not canhoto.nota %}
         <div class="border rounded p-3 bg-light">
-          <h6 class="mb-2 small fw-semibold">Vincular Manualmente</h6>
-          <form method="post" action="{% url 'canhotos:vincular' canhoto.pk %}">
+          <h6 class="mb-2 small fw-semibold">
+            <i class="bi bi-link-45deg me-1"></i>Vincular Manualmente
+          </h6>
+          <form method="post" action="{% url 'canhotos:vincular' canhoto.pk %}" id="vincular-form">
             {% csrf_token %}
-            <div class="mb-2">
-              {{ vincular_form.nota }}
+            {{ vincular_form.nota_id }}
+            <div class="position-relative mb-2">
+              <input type="text" id="busca-nota" class="form-control form-control-sm"
+                     placeholder="Pesquisar pelo número da NF..." autocomplete="off">
+              <div id="busca-resultados" class="list-group position-absolute w-100 shadow-sm"
+                   style="z-index: 1000; max-height: 220px; overflow-y: auto; display: none;"></div>
             </div>
-            <button type="submit" class="btn btn-primary btn-sm w-100">
+            <div id="nota-selecionada" class="alert alert-info py-2 px-3 mb-2" style="display: none;"></div>
+            <button type="submit" class="btn btn-primary btn-sm w-100" id="btn-vincular" disabled>
               <i class="bi bi-link-45deg me-1"></i>Vincular à Nota Fiscal
             </button>
           </form>
@@ -235,4 +257,79 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if not canhoto.nota %}
+<script>
+(function () {
+  var input = document.getElementById('busca-nota');
+  var resultados = document.getElementById('busca-resultados');
+  var hiddenId = document.getElementById('id_nota_id');
+  var selecionada = document.getElementById('nota-selecionada');
+  var btnVincular = document.getElementById('btn-vincular');
+  var buscarUrl = "{% url 'notas:buscar_api' %}";
+  var debounceTimer = null;
+
+  function limparResultados() {
+    resultados.innerHTML = '';
+    resultados.style.display = 'none';
+  }
+
+  function buscar(termo) {
+    fetch(buscarUrl + '?q=' + encodeURIComponent(termo), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) { renderResultados(data.resultados); })
+      .catch(limparResultados);
+  }
+
+  function renderResultados(lista) {
+    if (!lista.length) {
+      resultados.innerHTML = '<div class="list-group-item small text-muted">Nenhuma nota encontrada.</div>';
+      resultados.style.display = 'block';
+      return;
+    }
+    resultados.innerHTML = lista.map(function (nota) {
+      var statusBadge = nota.vinculada
+        ? '<span class="badge bg-secondary ms-1">já vinculada</span>'
+        : (nota.status === 'FINALIZADO' ? '<span class="badge bg-success ms-1">Finalizado</span>' : '<span class="badge bg-warning text-dark ms-1">Aguardando</span>');
+      return '<button type="button" class="list-group-item list-group-item-action small" ' +
+        'data-id="' + nota.id + '" data-numero="' + nota.numero + '">' +
+        'NF ' + nota.numero + statusBadge +
+        (nota.destinatario ? '<br><span class="text-muted">' + nota.destinatario + '</span>' : '') +
+        '</button>';
+    }).join('');
+    resultados.style.display = 'block';
+  }
+
+  input.addEventListener('input', function () {
+    var termo = input.value.trim();
+    clearTimeout(debounceTimer);
+    hiddenId.value = '';
+    btnVincular.disabled = true;
+    selecionada.style.display = 'none';
+    if (termo.length < 2) {
+      limparResultados();
+      return;
+    }
+    debounceTimer = setTimeout(function () { buscar(termo); }, 300);
+  });
+
+  resultados.addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-id]');
+    if (!btn) return;
+    hiddenId.value = btn.getAttribute('data-id');
+    selecionada.textContent = 'Selecionada: NF ' + btn.getAttribute('data-numero');
+    selecionada.style.display = 'block';
+    btnVincular.disabled = false;
+    limparResultados();
+    input.value = btn.getAttribute('data-numero');
+  });
+
+  document.addEventListener('click', function (e) {
+    if (e.target !== input) limparResultados();
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
