@@ -17,7 +17,9 @@ from django.db.models.functions import Cast
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy, reverse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.generic import ListView, DetailView
 
 from apps.canhotos.forms import CanhotoFilterSet, CorrigirNumeroForm, VincularManualForm
@@ -86,10 +88,15 @@ class CanhotoDetailView(DetailView):
         return context
 
 
+@method_decorator(xframe_options_sameorigin, name='get')
 class ServirArquivoCanhotoView(View):
     """
     Serve o arquivo físico do canhoto independente de onde ele esteja no disco.
     Necessário porque os arquivos podem estar em pastas do scanner fora do MEDIA_ROOT.
+
+    O decorator xframe_options_sameorigin sobrescreve o X-Frame-Options: DENY
+    global apenas neste endpoint, permitindo que o <iframe> de pré-visualização
+    (mesma origem) renderize o PDF.
     """
     http_method_names = ['get']
 
