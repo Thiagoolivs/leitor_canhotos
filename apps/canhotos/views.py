@@ -235,8 +235,13 @@ class AtribuirNotasDivisoriaView(View):
     def post(self, request, pk):
         canhoto = get_object_or_404(Canhoto, pk=pk)
         numeros = request.POST.getlist('numeros')
+        # Campo de texto livre: números adicionais separados por vírgula.
+        numeros_texto = request.POST.get('numeros_texto', '')
+        numeros += [n.strip() for n in numeros_texto.split(',') if n.strip()]
+        # Remove duplicados preservando ordem
+        numeros = list(dict.fromkeys(numeros))
         if not numeros:
-            messages.warning(request, 'Selecione ao menos um número para atribuir a este canhoto.')
+            messages.warning(request, 'Selecione ou digite ao menos um número para atribuir a este canhoto.')
             return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
 
         from services.conciliacao_service import ConciliacaoService
@@ -278,15 +283,38 @@ class CorrigirNumeroView(View):
         canhoto = get_object_or_404(Canhoto, pk=pk)
         form = CorrigirNumeroForm(request.POST)
         if form.is_valid():
-            numero = form.cleaned_data['numero_detectado']
-            canhoto.numero_detectado = numero
-            canhoto.confianca_deteccao = 'ALTA'
-            canhoto.save(update_fields=['numero_detectado', 'confianca_deteccao', 'updated_at'])
-            messages.success(
-                request,
-                f'Número do canhoto {canhoto.id} corrigido manualmente para {numero}.',
-            )
-            logger.info('Número corrigido manualmente: canhoto_id=%s numero=%s', canhoto.id, numero)
+            numeros = form.numeros_list
+            if len(numeros) > 1:
+                # Vários números → trata o canhoto como divisória que atende
+                # múltiplas notas. Popula numeros_lista para liberar a checklist
+                # de atribuição "Quais notas esses canhotos atendem?".
+                from apps.canhotos.models import TipoPagina
+                canhoto.tipo_pagina = TipoPagina.DIVISORIA
+                canhoto.numeros_lista = ', '.join(numeros)
+                canhoto.numero_detectado = ''
+                canhoto.confianca_deteccao = 'ALTA'
+                canhoto.status_processamento = StatusProcessamento.REVISAO
+                canhoto.erro_mensagem = ''
+                canhoto.save(update_fields=[
+                    'tipo_pagina', 'numeros_lista', 'numero_detectado',
+                    'confianca_deteccao', 'status_processamento', 'erro_mensagem', 'updated_at',
+                ])
+                messages.success(
+                    request,
+                    f'Canhoto {canhoto.id} marcado como divisória com {len(numeros)} números. '
+                    'Selecione abaixo quais notas ele atende.',
+                )
+                logger.info('Canhoto %s definido como divisória manual: %s', canhoto.id, numeros)
+            else:
+                numero = numeros[0]
+                canhoto.numero_detectado = numero
+                canhoto.confianca_deteccao = 'ALTA'
+                canhoto.save(update_fields=['numero_detectado', 'confianca_deteccao', 'updated_at'])
+                messages.success(
+                    request,
+                    f'Número do canhoto {canhoto.id} corrigido manualmente para {numero}.',
+                )
+                logger.info('Número corrigido manualmente: canhoto_id=%s numero=%s', canhoto.id, numero)
         else:
             for field, errs in form.errors.items():
                 for err in errs:

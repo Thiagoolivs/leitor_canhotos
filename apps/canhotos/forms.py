@@ -40,15 +40,17 @@ class VincularManualForm(forms.Form):
 
 class CorrigirNumeroForm(forms.Form):
     """
-    Form para validar/corrigir manualmente o número detectado de um canhoto
-    com confiança MEDIA ou BAIXA (ou não detectado).
+    Form para validar/corrigir manualmente o(s) número(s) de um canhoto.
+
+    Aceita um único número (vínculo normal) ou vários separados por vírgula
+    (transforma o canhoto numa divisória que atende várias notas).
     """
     numero_detectado = forms.CharField(
-        label='Número Correto',
-        max_length=50,
+        label='Número(s) Correto(s)',
+        max_length=255,
         widget=forms.TextInput(attrs={
             'class': 'form-control form-control-sm flex-grow-1',
-            'placeholder': 'Digite o número correto da NF...',
+            'placeholder': 'Ex.: 12345  ou  12345, 12346, 12347',
         }),
     )
 
@@ -57,6 +59,12 @@ class CorrigirNumeroForm(forms.Form):
         if not numero:
             raise forms.ValidationError('Informe um número válido.')
         return numero
+
+    @property
+    def numeros_list(self):
+        """Lista de números individuais (separados por vírgula), já limpos."""
+        bruto = self.cleaned_data.get('numero_detectado', '')
+        return [n.strip() for n in bruto.split(',') if n.strip()]
 
 
 SEM_VINCULO_CHOICES = [
