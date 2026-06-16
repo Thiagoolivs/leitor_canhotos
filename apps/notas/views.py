@@ -20,19 +20,22 @@ from django.views.generic import ListView, DetailView, CreateView, UpdateView, V
 
 from apps.notas.forms import NotaFiscalFilterSet, NotaFiscalForm
 from apps.notas.models import NotaFiscal
+from core.mixins import PersistedFilterMixin
 
 logger = logging.getLogger(__name__)
 
 
-class NotaFiscalListView(ListView):
+class NotaFiscalListView(PersistedFilterMixin, ListView):
     """
     Displays paginated list of Notas Fiscais with filtering support.
     Supports filtering by numero, data_emissao, categoria, status via GET params.
+    Filters persist across navigation via session (see PersistedFilterMixin).
     """
     model = NotaFiscal
     template_name = 'notas/lista.html'
     context_object_name = 'notas'
     paginate_by = 20
+    session_key = 'notas_filtros'
 
     def get_queryset(self):
         # numero é normalizado para dígitos puros por formatar_numero_nota(), mas

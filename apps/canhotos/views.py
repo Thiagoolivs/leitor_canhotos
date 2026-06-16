@@ -24,18 +24,21 @@ from django.views.generic import ListView, DetailView
 
 from apps.canhotos.forms import CanhotoFilterSet, CorrigirNumeroForm, VincularManualForm
 from apps.canhotos.models import Canhoto, StatusProcessamento
+from core.mixins import PersistedFilterMixin
 
 logger = logging.getLogger(__name__)
 
 
-class CanhotoListView(ListView):
+class CanhotoListView(PersistedFilterMixin, ListView):
     """
     Paginated list of all canhotos with status and filtering support.
+    Filters persist across navigation via session (see PersistedFilterMixin).
     """
     model = Canhoto
     template_name = 'canhotos/lista.html'
     context_object_name = 'canhotos'
     paginate_by = 20
+    session_key = 'canhotos_filtros'
 
     def get_queryset(self):
         # numero_detectado pode conter texto/vazio; remove tudo que não é
