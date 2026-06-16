@@ -81,6 +81,22 @@ class OCRService:
 
     TESSERACT_CONFIG = '--oem 3 --psm 6 -l por+eng'
 
+    @staticmethod
+    def _preprocessar_imagem(imagem):
+        """
+        Escala de cinza + autocontraste + nitidez antes do OCR.
+
+        Scans físicos costumam vir com fundo amarelado/cinza e pouco contraste,
+        o que confunde o Tesseract. autocontrast() estica o histograma (remove
+        esse "véu" sem precisar de um threshold fixo, que erraria em scans com
+        iluminação desigual) e SHARPEN realça as bordas dos caracteres.
+        """
+        from PIL import ImageFilter, ImageOps
+
+        cinza = ImageOps.grayscale(imagem)
+        contrastada = ImageOps.autocontrast(cinza, cutoff=1)
+        return contrastada.filter(ImageFilter.SHARPEN)
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.patterns = getattr(
@@ -175,7 +191,8 @@ class OCRService:
         textos = []
         for i, imagem in enumerate(imagens, start=1):
             try:
-                texto_pagina = pytesseract.image_to_string(imagem, config=self.TESSERACT_CONFIG)
+                imagem_proc = self._preprocessar_imagem(imagem)
+                texto_pagina = pytesseract.image_to_string(imagem_proc, config=self.TESSERACT_CONFIG)
                 textos.append(f'\n--- PÁGINA {i} ---\n{texto_pagina}')
                 self.logger.debug('OCR página %d: %d chars extraídos', i, len(texto_pagina))
             except Exception as exc:
@@ -193,7 +210,8 @@ class OCRService:
         try:
             self.logger.info('OCR em imagem: %s', caminho_imagem)
             imagem = Image.open(caminho_imagem)
-            texto = pytesseract.image_to_string(imagem, config=self.TESSERACT_CONFIG)
+            imagem_proc = self._preprocessar_imagem(imagem)
+            texto = pytesseract.image_to_string(imagem_proc, config=self.TESSERACT_CONFIG)
             self.logger.debug('OCR imagem: %d chars extraídos', len(texto))
             return texto
         except Exception as exc:
@@ -483,9 +501,10 @@ class OCRService:
 
         imagem = imagens[0]  # canhoto = página única
 
-        # OCR
+        # OCR (o barcode abaixo usa a imagem original — colorida ajuda o zxing/pyzbar)
         try:
-            texto = pytesseract.image_to_string(imagem, config=self.TESSERACT_CONFIG)
+            imagem_proc = self._preprocessar_imagem(imagem)
+            texto = pytesseract.image_to_string(imagem_proc, config=self.TESSERACT_CONFIG)
             self.logger.debug('OCR canhoto: %d chars', len(texto))
         except Exception as exc:
             texto = ''
