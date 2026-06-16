@@ -144,6 +144,13 @@
                  title="Ver detalhes">
                 <i class="bi bi-eye"></i>
               </a>
+              <form method="post" action="{% url 'canhotos:excluir' canhoto.pk %}" class="d-inline"
+                    onsubmit="return confirm('Excluir o canhoto #{{ canhoto.pk }}? Esta ação não pode ser desfeita.');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
             </td>
           </tr>
           {% endfor %}

@@ -639,7 +639,19 @@ def reprocessar_canhoto(canhoto_id: int) -> dict:
         return {'sucesso': False, 'canhoto_id': canhoto_id, 'numero_nota': None, 'mensagem': msg}
 
     try:
-        resultado_ocr = ocr_service.processar_arquivo(str(caminho))
+        resultado_ocr = ocr_service.processar_pagina_canhoto(str(caminho))
+
+        tipo_pagina = resultado_ocr.get('tipo_pagina', 'CANHOTO')
+        if tipo_pagina in ('DIVISORIA', 'DIVISORIA_MISTA'):
+            resultado = _tratar_divisoria(canhoto, resultado_ocr, tipo_pagina)
+            return {
+                'sucesso': True,
+                'canhoto_id': canhoto_id,
+                'numero_nota': None,
+                'mensagem': f'Folha divisória detectada ({tipo_pagina}).',
+                **resultado,
+            }
+
         numero_nota = resultado_ocr.get('numero_nota')
         texto_ocr = resultado_ocr.get('texto', '')
         ocr_sucesso = resultado_ocr.get('sucesso', False)

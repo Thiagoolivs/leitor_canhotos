@@ -158,6 +158,15 @@
           </button>
         </form>
 
+        <!-- Excluir Canhoto -->
+        <form method="post" action="{% url 'canhotos:excluir' canhoto.pk %}" class="mb-3">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline-danger btn-sm w-100"
+                  onclick="return confirm('Excluir este canhoto permanentemente? Esta ação não pode ser desfeita.')">
+            <i class="bi bi-trash me-1"></i>Excluir Canhoto
+          </button>
+        </form>
+
         <!-- Corrigir Número Manualmente -->
         <div class="border rounded p-3 bg-light mb-3">
           <h6 class="mb-2 small fw-semibold">

@@ -16,4 +16,5 @@ urlpatterns = [
     path('<int:pk>/reprocessar/', views.ReprocessarOCRView.as_view(), name='reprocessar'),
     path('<int:pk>/vincular/', views.VincularManualView.as_view(), name='vincular'),
     path('<int:pk>/corrigir/', views.CorrigirNumeroView.as_view(), name='corrigir'),
+    path('<int:pk>/excluir/', views.ExcluirCanhotoView.as_view(), name='excluir'),
 ]

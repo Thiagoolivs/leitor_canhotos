@@ -179,6 +179,42 @@ class VincularManualView(View):
         return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
 
 
+class ExcluirCanhotoView(View):
+    """
+    POST-only view that deletes a canhoto record and its physical file.
+    If the canhoto is linked to a nota, the nota's status is reverted to
+    AGUARDANDO_CANHOTO so it can be matched again later.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        canhoto_id = canhoto.id
+
+        nota = canhoto.nota
+        if nota is not None:
+            from apps.notas.models import StatusNota
+            nota.status = StatusNota.AGUARDANDO_CANHOTO
+            nota.save(update_fields=['status', 'updated_at'])
+
+        if canhoto.arquivo:
+            try:
+                from django.conf import settings
+                from pathlib import Path
+                caminho = Path(str(canhoto.arquivo.name))
+                if not caminho.is_absolute():
+                    caminho = Path(settings.MEDIA_ROOT) / caminho
+                if caminho.exists():
+                    caminho.unlink()
+            except Exception as exc:
+                logger.warning('Falha ao remover arquivo físico do canhoto %s: %s', canhoto_id, exc)
+
+        canhoto.delete()
+        messages.success(request, f'Canhoto {canhoto_id} excluído com sucesso.')
+        logger.info('Canhoto excluído: canhoto_id=%s', canhoto_id)
+        return redirect(reverse('canhotos:lista'))
+
+
 class CorrigirNumeroView(View):
     """
     POST-only view that lets an operator manually validate/correct the
