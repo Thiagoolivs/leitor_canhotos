@@ -419,16 +419,17 @@ class OCRService:
         - tipo_pagina: 'CANHOTO' | 'DIVISORIA' | 'DIVISORIA_MISTA'
         - numeros_sequencia: lista contígua de números da divisória (vazia se for canhoto)
         - numeros_faltantes: números do intervalo cobertos por canhotos colados
-        - numeros_canhotos: números de canhotos colados detectados (faltantes + impressos)
+        - numeros_canhotos: números de canhotos colados detectados
+        - canhotos_info: lista de dicts com {numero, confianca, origem} por canhoto
         """
         completa, faltantes = self.detectar_sequencia_numeros(texto)
         if not completa:
             return {
                 'tipo_pagina': 'CANHOTO',
                 'numeros_sequencia': [], 'numeros_faltantes': [], 'numeros_canhotos': [],
+                'canhotos_info': [],
             }
 
-        # Números impressos de canhotos colados ("N. 00015995 SÉRIE 3")
         stubs_impressos = []
         vistos = set()
         for m in _RE_NUMERO_STUB.findall(texto or ''):
@@ -439,20 +440,36 @@ class OCRService:
 
         tem_keyword = bool(_RE_STUB_KEYWORDS.search(texto or ''))
 
-        # Sinais de canhotos colados: números faltando na sequência (cobertos),
-        # número impresso de canhoto, ou palavras-chave de recibo.
         if faltantes or stubs_impressos or tem_keyword:
-            # Prioriza os números faltantes (NF reais da sequência) como canhotos
-            numeros_canhotos = [str(n) for n in faltantes] or stubs_impressos
+            faltantes_str = set(str(n) for n in faltantes)
+            stubs_set = set(stubs_impressos)
+
+            canhotos_info = []
+            for num in [str(n) for n in faltantes]:
+                if num in stubs_set:
+                    canhotos_info.append({'numero': num, 'confianca': 'ALTA', 'origem': 'gap+stub'})
+                elif tem_keyword:
+                    canhotos_info.append({'numero': num, 'confianca': 'MEDIA', 'origem': 'gap+keyword'})
+                else:
+                    canhotos_info.append({'numero': num, 'confianca': 'BAIXA', 'origem': 'gap'})
+
+            for num in stubs_impressos:
+                if num not in faltantes_str:
+                    canhotos_info.append({'numero': num, 'confianca': 'MEDIA', 'origem': 'stub'})
+
+            numeros_canhotos = [c['numero'] for c in canhotos_info]
+
             self.logger.info(
-                'Folha DIVISÓRIA MISTA: %d números (%s..%s), canhotos colados em %s',
-                len(completa), completa[0], completa[-1], numeros_canhotos,
+                'Folha DIVISÓRIA MISTA: %d números (%s..%s), %d canhoto(s): %s',
+                len(completa), completa[0], completa[-1], len(canhotos_info),
+                [(c['numero'], c['confianca']) for c in canhotos_info],
             )
             return {
                 'tipo_pagina': 'DIVISORIA_MISTA',
                 'numeros_sequencia': completa,
                 'numeros_faltantes': faltantes,
                 'numeros_canhotos': numeros_canhotos,
+                'canhotos_info': canhotos_info,
             }
 
         self.logger.info(
@@ -462,7 +479,147 @@ class OCRService:
         return {
             'tipo_pagina': 'DIVISORIA',
             'numeros_sequencia': completa, 'numeros_faltantes': [], 'numeros_canhotos': [],
+            'canhotos_info': [],
         }
+
+    def analisar_divisoria_espacial(self, imagem_proc, texto: str, classificacao: dict) -> list:
+        """
+        Enriquece canhotos_info com análise espacial via image_to_data.
+
+        Para cada canhoto com confiança < ALTA, recorta a região da imagem
+        correspondente ao gap na sequência e roda OCR focado para ler o
+        número impresso no canhoto colado. Se o número lido confirma o
+        número inferido pelo gap, a confiança sobe para ALTA.
+        """
+        import pytesseract
+
+        canhotos_info = classificacao.get('canhotos_info', [])
+        if not canhotos_info:
+            return canhotos_info
+
+        precisa_analise = [c for c in canhotos_info if c['confianca'] != 'ALTA']
+        if not precisa_analise:
+            return canhotos_info
+
+        largura, altura = imagem_proc.size
+
+        try:
+            data = pytesseract.image_to_data(
+                imagem_proc, config=self.TESSERACT_CONFIG,
+                output_type=pytesseract.Output.DICT,
+            )
+        except Exception as exc:
+            self.logger.warning('image_to_data falhou na análise espacial: %s', exc)
+            return canhotos_info
+
+        sequencia = classificacao.get('numeros_sequencia', [])
+        seq_set = set(sequencia)
+
+        y_por_numero = {}
+        for i in range(len(data['text'])):
+            texto_w = data['text'][i].strip()
+            conf = int(data['conf'][i])
+            if not texto_w or conf < 20:
+                continue
+            limpo = re.sub(r'[^\d]', '', texto_w)
+            if 5 <= len(limpo) <= 9:
+                try:
+                    num = int(limpo)
+                    if num in seq_set and num not in y_por_numero:
+                        y_por_numero[num] = data['top'][i] + data['height'][i] // 2
+                except ValueError:
+                    pass
+
+        if len(y_por_numero) < 2:
+            self.logger.debug('Análise espacial: poucos números posicionados (%d)', len(y_por_numero))
+            return canhotos_info
+
+        resultado = []
+        for info in canhotos_info:
+            if info['confianca'] == 'ALTA':
+                resultado.append(info)
+                continue
+
+            try:
+                num_int = int(info['numero'])
+            except (ValueError, TypeError):
+                resultado.append(info)
+                continue
+
+            if num_int not in sequencia:
+                resultado.append(info)
+                continue
+
+            idx = sequencia.index(num_int)
+
+            y_acima = 0
+            for j in range(idx - 1, -1, -1):
+                if sequencia[j] in y_por_numero:
+                    y_acima = y_por_numero[sequencia[j]]
+                    break
+
+            y_abaixo = altura
+            for j in range(idx + 1, len(sequencia)):
+                if sequencia[j] in y_por_numero:
+                    y_abaixo = y_por_numero[sequencia[j]]
+                    break
+
+            if y_abaixo <= y_acima + 30:
+                resultado.append(info)
+                continue
+
+            margem = 10
+            crop_box = (0, max(0, y_acima + margem), largura, min(altura, y_abaixo - margem))
+            try:
+                recorte = imagem_proc.crop(crop_box)
+                texto_recorte = pytesseract.image_to_string(
+                    recorte, config=self.TESSERACT_CONFIG,
+                )
+
+                numero_lido = None
+                m_stub = _RE_NUMERO_STUB.search(texto_recorte)
+                if m_stub:
+                    numero_lido = str(int(m_stub.group(1)))
+
+                if not numero_lido:
+                    numero_lido = self.extrair_numero_nota(texto_recorte)
+
+                tem_keyword_recorte = bool(_RE_STUB_KEYWORDS.search(texto_recorte))
+
+                if numero_lido and numero_lido == info['numero']:
+                    resultado.append({
+                        'numero': info['numero'],
+                        'confianca': 'ALTA',
+                        'origem': 'gap+ocr_recorte',
+                    })
+                    self.logger.info(
+                        'Análise espacial: NF %s confirmada por OCR de recorte [ALTA]',
+                        info['numero'],
+                    )
+                elif numero_lido:
+                    resultado.append({
+                        'numero': numero_lido,
+                        'confianca': 'MEDIA',
+                        'origem': 'ocr_recorte',
+                    })
+                elif tem_keyword_recorte:
+                    resultado.append({
+                        'numero': info['numero'],
+                        'confianca': 'MEDIA',
+                        'origem': 'gap+keyword_recorte',
+                    })
+                else:
+                    resultado.append(info)
+            except Exception as exc:
+                self.logger.debug('Falha no OCR de recorte para NF %s: %s', info['numero'], exc)
+                resultado.append(info)
+
+        alta = sum(1 for c in resultado if c['confianca'] == 'ALTA')
+        self.logger.info(
+            'Análise espacial concluída: %d/%d canhotos com confiança ALTA',
+            alta, len(resultado),
+        )
+        return resultado
 
     def processar_pagina_canhoto(self, caminho: str) -> dict:
         """
@@ -489,6 +646,7 @@ class OCRService:
             'data_emissao': None, 'destinatario': '', 'valor_total': None,
             'tipo_pagina': 'CANHOTO', 'numeros_sequencia': [],
             'numeros_faltantes': [], 'numeros_canhotos': [],
+            'canhotos_info': [],
         }
 
         try:
@@ -513,13 +671,23 @@ class OCRService:
         # Classificação: a página é um canhoto normal ou uma folha divisória?
         classificacao = self.classificar_pagina(texto)
         if classificacao['tipo_pagina'] != 'CANHOTO':
+            canhotos_info = classificacao.get('canhotos_info', [])
+            if classificacao['tipo_pagina'] == 'DIVISORIA_MISTA' and canhotos_info:
+                canhotos_info = self.analisar_divisoria_espacial(
+                    imagem_proc, texto, classificacao,
+                )
             return {
                 **_vazio,
                 'texto': texto,
                 'tipo_pagina': classificacao['tipo_pagina'],
                 'numeros_sequencia': classificacao['numeros_sequencia'],
                 'numeros_faltantes': classificacao['numeros_faltantes'],
-                'numeros_canhotos': classificacao['numeros_canhotos'],
+                'numeros_canhotos': (
+                    [c['numero'] for c in canhotos_info]
+                    if canhotos_info
+                    else classificacao['numeros_canhotos']
+                ),
+                'canhotos_info': canhotos_info,
                 'sucesso': True,
                 'erro': None,
             }

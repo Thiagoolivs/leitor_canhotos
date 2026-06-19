@@ -234,6 +234,11 @@ SCANNER_CANHOTO_DIRS = _parse_scanner_dirs(
 SCANNER_PROCESSED_DIR = config('SCANNER_PROCESSED_DIR', default='/processados')
 SCANNER_ERROR_DIR = config('SCANNER_ERROR_DIR', default='/erro')
 
+# Auto-vinculação: quando habilitado, canhotos com confiança ALTA são
+# automaticamente vinculados à nota fiscal correspondente sem revisão humana.
+# Canhotos com confiança BAIXA vão para REVISAO em vez de auto-vincular.
+AUTO_VINCULAR_ALTA_CONFIANCA = config('AUTO_VINCULAR_ALTA_CONFIANCA', default=True, cast=bool)
+
 # Tesseract executable path (overridable via env for Windows)
 import pytesseract as _pytesseract
 _tesseract_cmd = config('TESSERACT_CMD', default='tesseract')

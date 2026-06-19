@@ -124,6 +124,17 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                     _logger.warning('[CANHOTO] Numero nao detectado em %s', caminho.name)
                     return {'status': 'erro', 'motivo': 'numero_nao_detectado'}
 
+                confianca = resultado_ocr.get('confianca', 'BAIXA')
+                if getattr(settings, 'AUTO_VINCULAR_ALTA_CONFIANCA', True) and confianca == 'BAIXA':
+                    from apps.canhotos.models import StatusProcessamento as _SP
+                    CanhotoRepository().atualizar(
+                        canhoto,
+                        status_processamento=_SP.REVISAO,
+                        erro_mensagem=f'Confiança baixa ({confianca}) — confirmar número manualmente.',
+                    )
+                    _logger.info('[CANHOTO] Confiança BAIXA → REVISAO: NF=%s', numero_nota)
+                    return {'status': 'revisao', 'motivo': 'confianca_baixa', 'numero': numero_nota}
+
                 conciliacao_service = ConciliacaoService()
                 try:
                     resultado = conciliacao_service.conciliar(canhoto.id, numero_nota)
@@ -284,42 +295,82 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
     """
     Trata uma folha divisória detectada.
 
-    - DIVISORIA (pura): nenhuma ação automática. Marca o registro como REVISAO,
-      guarda a lista de números detectados para o usuário validar se não falta
-      nenhum canhoto. Não cria notas nem concilia.
-    - DIVISORIA_MISTA: além de marcar a página para revisão, cria um registro
-      Canhoto para cada canhoto colado detectado (mesmo arquivo), também em REVISAO,
-      para o usuário confirmar/vincular manualmente.
+    Com AUTO_VINCULAR_ALTA_CONFIANCA habilitado, canhotos com confiança ALTA
+    são automaticamente vinculados às notas fiscais correspondentes.
+    Canhotos com confiança MEDIA ou BAIXA vão para REVISAO.
     """
     from repositories.canhoto_repository import CanhotoRepository
     from apps.canhotos.models import StatusProcessamento, TipoPagina
+    from services.conciliacao_service import ConciliacaoService
 
+    auto_vincular = getattr(settings, 'AUTO_VINCULAR_ALTA_CONFIANCA', True)
     repo = CanhotoRepository()
     sequencia = resultado_ocr.get('numeros_sequencia', [])
     numeros_lista = ', '.join(str(n) for n in sequencia)
     texto_ocr = resultado_ocr.get('texto', '')
+    canhotos_info = resultado_ocr.get('canhotos_info', [])
 
     tipo_enum = (
         TipoPagina.DIVISORIA_MISTA if tipo_pagina == 'DIVISORIA_MISTA' else TipoPagina.DIVISORIA
     )
-    msg = (
-        'Folha divisória com canhotos colados — confira e valide manualmente.'
-        if tipo_pagina == 'DIVISORIA_MISTA'
-        else 'Folha divisória detectada — valide se todos os canhotos foram recebidos.'
-    )
-    repo.atualizar(
-        canhoto,
-        tipo_pagina=tipo_enum,
-        status_processamento=StatusProcessamento.REVISAO,
-        numeros_lista=numeros_lista,
-        numero_detectado='',
-        confianca_deteccao='',
-        texto_ocr=texto_ocr,
-        erro_mensagem=msg,
-    )
 
     filhos = []
-    if tipo_pagina == 'DIVISORIA_MISTA':
+    auto_vinculados = []
+    revisao = []
+
+    if tipo_pagina == 'DIVISORIA_MISTA' and canhotos_info:
+        conciliacao_service = ConciliacaoService()
+
+        for info in canhotos_info:
+            numero = info.get('numero', '')
+            confianca = info.get('confianca', 'BAIXA')
+            origem = info.get('origem', '')
+            if not numero:
+                continue
+
+            if auto_vincular and confianca == 'ALTA':
+                filho = repo.criar(
+                    arquivo=str(canhoto.arquivo),
+                    status_processamento=StatusProcessamento.PROCESSANDO,
+                    tipo_pagina=TipoPagina.CANHOTO,
+                    numero_detectado=numero,
+                    confianca_deteccao=confianca,
+                    pagina_numero=canhoto.pagina_numero,
+                    texto_ocr=texto_ocr,
+                )
+                filhos.append(filho.id)
+                try:
+                    conciliacao_service.conciliar(filho.id, numero)
+                    auto_vinculados.append(numero)
+                    logger.info(
+                        '[DIVISÓRIA] Auto-vinculado: filho=%s NF=%s [%s via %s]',
+                        filho.id, numero, confianca, origem,
+                    )
+                except Exception as exc:
+                    repo.atualizar(
+                        filho,
+                        status_processamento=StatusProcessamento.REVISAO,
+                        erro_mensagem=f'Auto-vinculação falhou: {exc}',
+                    )
+                    revisao.append(numero)
+                    logger.warning(
+                        '[DIVISÓRIA] Auto-vinculação falhou NF %s: %s', numero, exc,
+                    )
+            else:
+                filho = repo.criar(
+                    arquivo=str(canhoto.arquivo),
+                    status_processamento=StatusProcessamento.REVISAO,
+                    tipo_pagina=TipoPagina.CANHOTO,
+                    numero_detectado=numero,
+                    confianca_deteccao=confianca,
+                    pagina_numero=canhoto.pagina_numero,
+                    texto_ocr=texto_ocr,
+                    erro_mensagem=f'Confirmar manualmente (confiança {confianca}, via {origem}).',
+                )
+                filhos.append(filho.id)
+                revisao.append(numero)
+
+    elif tipo_pagina == 'DIVISORIA_MISTA':
         for stub in resultado_ocr.get('numeros_canhotos', []):
             if not stub:
                 continue
@@ -333,10 +384,40 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
                 erro_mensagem='Canhoto extraído de folha divisória — confirmar manualmente.',
             )
             filhos.append(filho.id)
+            revisao.append(stub)
+
+    if auto_vinculados and not revisao:
+        parent_status = StatusProcessamento.SUCESSO
+        msg = f'Divisória processada: {len(auto_vinculados)} canhoto(s) vinculado(s) automaticamente.'
+    elif auto_vinculados:
+        parent_status = StatusProcessamento.REVISAO
+        msg = (
+            f'{len(auto_vinculados)} vinculado(s) automaticamente, '
+            f'{len(revisao)} aguardando revisão.'
+        )
+    else:
+        parent_status = StatusProcessamento.REVISAO
+        msg = (
+            'Folha divisória com canhotos colados — confira e valide manualmente.'
+            if tipo_pagina == 'DIVISORIA_MISTA'
+            else 'Folha divisória detectada — valide se todos os canhotos foram recebidos.'
+        )
+
+    repo.atualizar(
+        canhoto,
+        tipo_pagina=tipo_enum,
+        status_processamento=parent_status,
+        numeros_lista=numeros_lista,
+        numero_detectado='',
+        confianca_deteccao='',
+        texto_ocr=texto_ocr,
+        erro_mensagem=msg,
+    )
 
     logger.info(
-        '[CANHOTO] Divisória %s registrada (id=%s): %d números, %d canhoto(s) extraído(s)',
+        '[CANHOTO] Divisória %s (id=%s): %d números, %d filho(s), %d auto, %d revisão',
         tipo_pagina, canhoto.id, len(sequencia), len(filhos),
+        len(auto_vinculados), len(revisao),
     )
     return {
         'status': 'divisoria',
@@ -344,6 +425,8 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
         'canhoto_id': canhoto.id,
         'numeros': sequencia,
         'filhos': filhos,
+        'auto_vinculados': auto_vinculados,
+        'revisao': revisao,
     }
 
 
