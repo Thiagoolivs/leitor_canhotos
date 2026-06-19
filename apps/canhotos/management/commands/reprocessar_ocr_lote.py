@@ -2,9 +2,11 @@
 Comando: reprocessar_ocr_lote
 
 Reenfileira para reprocessamento OCR os canhotos já existentes que mais se
-beneficiam do pré-processamento de imagem adicionado em ocr_service.py
-(confiança BAIXA/MEDIA, sem número detectado, ou status ERRO/REVISAO) — sem
+beneficiam do pré-processamento de imagem e da análise espacial — sem
 tocar nos que já foram lidos com sucesso e ALTA confiança.
+
+Exclui automaticamente divisórias e filhos de divisórias para evitar
+criação de registros duplicados.
 
 Uso:
     # Lista quem seria reprocessado, sem enfileirar nada
@@ -16,14 +18,14 @@ Uso:
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 
-from apps.canhotos.models import Canhoto, StatusProcessamento
+from apps.canhotos.models import Canhoto, StatusProcessamento, TipoPagina
 
 
 class Command(BaseCommand):
     help = (
         'Reenfileira para reprocessamento OCR os canhotos com baixa/média confiança, '
-        'sem número detectado, ou em ERRO/REVISAO — para se beneficiarem do novo '
-        'pré-processamento de imagem sem reprocessar à toa quem já está correto.'
+        'sem número detectado, ou em ERRO/REVISAO. Exclui divisórias e filhos de '
+        'divisórias automaticamente.'
     )
 
     def add_arguments(self, parser):
@@ -37,15 +39,33 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         dry_run = options['dry_run']
 
-        candidatos = Canhoto.objects.filter(
-            Q(confianca_deteccao__in=['BAIXA', 'MEDIA'])
-            | Q(numero_detectado='')
-            | Q(status_processamento__in=[StatusProcessamento.ERRO, StatusProcessamento.REVISAO]),
-        ).exclude(arquivo='')
+        # Arquivos que pertencem a divisórias — filhos de divisória compartilham
+        # o mesmo arquivo e, se reprocessados, seriam reclassificados como
+        # divisória, criando registros duplicados.
+        arquivos_divisoria = (
+            Canhoto.objects
+            .filter(tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA])
+            .values('arquivo')
+        )
+
+        candidatos = (
+            Canhoto.objects
+            .filter(
+                Q(confianca_deteccao__in=['BAIXA', 'MEDIA'])
+                | Q(numero_detectado='')
+                | Q(status_processamento__in=[
+                    StatusProcessamento.ERRO, StatusProcessamento.REVISAO,
+                ]),
+            )
+            .exclude(arquivo='')
+            .exclude(tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA])
+            .exclude(arquivo__in=arquivos_divisoria)
+        )
 
         total = candidatos.count()
         self.stdout.write(self.style.HTTP_INFO(
-            f'{total} canhoto(s) elegível(eis) para reprocessamento.'
+            f'{total} canhoto(s) elegível(eis) para reprocessamento '
+            f'(divisórias e seus filhos excluídos automaticamente).'
         ))
 
         if dry_run:
@@ -70,7 +90,7 @@ class Command(BaseCommand):
                 canhoto.save(update_fields=['status_processamento', 'erro_mensagem', 'updated_at'])
                 total_enfileirados += 1
             except Exception as exc:
-                self.stdout.write(self.style.ERROR(f'  ✗ canhoto {canhoto.id} → erro: {exc}'))
+                self.stdout.write(self.style.ERROR(f'  canhoto {canhoto.id} erro: {exc}'))
 
         self.stdout.write(self.style.SUCCESS(
             f'Concluído: {total_enfileirados} canhoto(s) enfileirado(s) para reprocessamento.'
