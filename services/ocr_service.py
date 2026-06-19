@@ -486,19 +486,20 @@ class OCRService:
         """
         Enriquece canhotos_info com análise espacial via image_to_data.
 
-        Para cada canhoto com confiança < ALTA, recorta a região da imagem
-        correspondente ao gap na sequência e roda OCR focado para ler o
-        número impresso no canhoto colado. Se o número lido confirma o
-        número inferido pelo gap, a confiança sobe para ALTA.
+        Duas etapas:
+        1. Para cada canhoto inferido por GAP, recorta a região entre os números
+           impressos vizinhos e roda OCR focado para confirmar o número
+           (gap + OCR concordam → ALTA).
+        2. Detecta canhotos colados nas BORDAS — acima do primeiro ou abaixo do
+           último número impresso. Esses cobrem números fora do intervalo
+           [min, max] da sequência detectada, então não geram gap e seriam
+           perdidos pela etapa 1.
         """
         import pytesseract
 
-        canhotos_info = classificacao.get('canhotos_info', [])
-        if not canhotos_info:
-            return canhotos_info
-
-        precisa_analise = [c for c in canhotos_info if c['confianca'] != 'ALTA']
-        if not precisa_analise:
+        canhotos_info = list(classificacao.get('canhotos_info', []))
+        sequencia = classificacao.get('numeros_sequencia', [])
+        if not sequencia:
             return canhotos_info
 
         largura, altura = imagem_proc.size
@@ -512,114 +513,193 @@ class OCRService:
             self.logger.warning('image_to_data falhou na análise espacial: %s', exc)
             return canhotos_info
 
-        sequencia = classificacao.get('numeros_sequencia', [])
+        # Mapeia a posição Y (centro) de cada número impresso da sequência
         seq_set = set(sequencia)
-
         y_por_numero = {}
         for i in range(len(data['text'])):
             texto_w = data['text'][i].strip()
-            conf = int(data['conf'][i])
+            try:
+                conf = int(data['conf'][i])
+            except (ValueError, TypeError):
+                continue
             if not texto_w or conf < 20:
                 continue
             limpo = re.sub(r'[^\d]', '', texto_w)
             if 5 <= len(limpo) <= 9:
                 try:
                     num = int(limpo)
-                    if num in seq_set and num not in y_por_numero:
-                        y_por_numero[num] = data['top'][i] + data['height'][i] // 2
                 except ValueError:
-                    pass
+                    continue
+                if num in seq_set and num not in y_por_numero:
+                    y_por_numero[num] = data['top'][i] + data['height'][i] // 2
 
         if len(y_por_numero) < 2:
             self.logger.debug('Análise espacial: poucos números posicionados (%d)', len(y_por_numero))
             return canhotos_info
 
-        resultado = []
-        for info in canhotos_info:
-            if info['confianca'] == 'ALTA':
-                resultado.append(info)
-                continue
+        # Etapa 1: refina canhotos inferidos por gap
+        resultado = [
+            self._refinar_canhoto_gap(info, imagem_proc, sequencia, y_por_numero, largura, altura)
+            for info in canhotos_info
+        ]
 
-            try:
-                num_int = int(info['numero'])
-            except (ValueError, TypeError):
-                resultado.append(info)
-                continue
-
-            if num_int not in sequencia:
-                resultado.append(info)
-                continue
-
-            idx = sequencia.index(num_int)
-
-            y_acima = 0
-            for j in range(idx - 1, -1, -1):
-                if sequencia[j] in y_por_numero:
-                    y_acima = y_por_numero[sequencia[j]]
-                    break
-
-            y_abaixo = altura
-            for j in range(idx + 1, len(sequencia)):
-                if sequencia[j] in y_por_numero:
-                    y_abaixo = y_por_numero[sequencia[j]]
-                    break
-
-            if y_abaixo <= y_acima + 30:
-                resultado.append(info)
-                continue
-
-            margem = 10
-            crop_box = (0, max(0, y_acima + margem), largura, min(altura, y_abaixo - margem))
-            try:
-                recorte = imagem_proc.crop(crop_box)
-                texto_recorte = pytesseract.image_to_string(
-                    recorte, config=self.TESSERACT_CONFIG,
-                )
-
-                numero_lido = None
-                m_stub = _RE_NUMERO_STUB.search(texto_recorte)
-                if m_stub:
-                    numero_lido = str(int(m_stub.group(1)))
-
-                if not numero_lido:
-                    numero_lido = self.extrair_numero_nota(texto_recorte)
-
-                tem_keyword_recorte = bool(_RE_STUB_KEYWORDS.search(texto_recorte))
-
-                if numero_lido and numero_lido == info['numero']:
-                    resultado.append({
-                        'numero': info['numero'],
-                        'confianca': 'ALTA',
-                        'origem': 'gap+ocr_recorte',
-                    })
-                    self.logger.info(
-                        'Análise espacial: NF %s confirmada por OCR de recorte [ALTA]',
-                        info['numero'],
-                    )
-                elif numero_lido:
-                    resultado.append({
-                        'numero': numero_lido,
-                        'confianca': 'MEDIA',
-                        'origem': 'ocr_recorte',
-                    })
-                elif tem_keyword_recorte:
-                    resultado.append({
-                        'numero': info['numero'],
-                        'confianca': 'MEDIA',
-                        'origem': 'gap+keyword_recorte',
-                    })
-                else:
-                    resultado.append(info)
-            except Exception as exc:
-                self.logger.debug('Falha no OCR de recorte para NF %s: %s', info['numero'], exc)
-                resultado.append(info)
+        # Etapa 2: detecta canhotos nas bordas (fora do intervalo da sequência)
+        numeros_ja = {c['numero'] for c in resultado}
+        resultado += self._detectar_canhotos_borda(
+            imagem_proc, sequencia, y_por_numero, largura, altura, numeros_ja,
+        )
 
         alta = sum(1 for c in resultado if c['confianca'] == 'ALTA')
         self.logger.info(
-            'Análise espacial concluída: %d/%d canhotos com confiança ALTA',
-            alta, len(resultado),
+            'Análise espacial concluída: %d canhoto(s), %d com confiança ALTA',
+            len(resultado), alta,
         )
         return resultado
+
+    def _refinar_canhoto_gap(self, info, imagem_proc, sequencia, y_por_numero, largura, altura):
+        """
+        Recorta a região do gap (entre os números impressos vizinhos legíveis)
+        e roda OCR focado. Se o número lido confirma o inferido pelo gap, a
+        confiança sobe para ALTA. Retorna o info (possivelmente atualizado).
+        """
+        import pytesseract
+
+        if info['confianca'] == 'ALTA':
+            return info
+        try:
+            num_int = int(info['numero'])
+        except (ValueError, TypeError):
+            return info
+        if num_int not in sequencia:
+            return info
+
+        idx = sequencia.index(num_int)
+
+        y_acima = 0
+        for j in range(idx - 1, -1, -1):
+            if sequencia[j] in y_por_numero:
+                y_acima = y_por_numero[sequencia[j]]
+                break
+
+        y_abaixo = altura
+        for j in range(idx + 1, len(sequencia)):
+            if sequencia[j] in y_por_numero:
+                y_abaixo = y_por_numero[sequencia[j]]
+                break
+
+        if y_abaixo <= y_acima + 30:
+            return info
+
+        margem = 10
+        crop_box = (0, max(0, y_acima + margem), largura, min(altura, y_abaixo - margem))
+        try:
+            recorte = imagem_proc.crop(crop_box)
+            texto_recorte = pytesseract.image_to_string(recorte, config=self.TESSERACT_CONFIG)
+
+            numero_lido = None
+            m_stub = _RE_NUMERO_STUB.search(texto_recorte)
+            if m_stub:
+                numero_lido = str(int(m_stub.group(1)))
+            if not numero_lido:
+                numero_lido = self.extrair_numero_nota(texto_recorte)
+
+            tem_keyword_recorte = bool(_RE_STUB_KEYWORDS.search(texto_recorte))
+
+            if numero_lido and numero_lido == info['numero']:
+                self.logger.info('Análise espacial: NF %s confirmada por OCR de recorte [ALTA]', info['numero'])
+                return {'numero': info['numero'], 'confianca': 'ALTA', 'origem': 'gap+ocr_recorte'}
+            if numero_lido:
+                return {'numero': numero_lido, 'confianca': 'MEDIA', 'origem': 'ocr_recorte'}
+            if tem_keyword_recorte:
+                return {'numero': info['numero'], 'confianca': 'MEDIA', 'origem': 'gap+keyword_recorte'}
+            return info
+        except Exception as exc:
+            self.logger.debug('Falha no OCR de recorte para NF %s: %s', info['numero'], exc)
+            return info
+
+    def _detectar_canhotos_borda(self, imagem_proc, sequencia, y_por_numero, largura, altura, numeros_ja):
+        """
+        Detecta canhotos colados nas bordas da folha:
+        - TOPO: acima do primeiro número impresso (cobrem números < min da sequência)
+        - BASE: abaixo do último número impresso (cobrem números > max da sequência)
+
+        Só dispara quando a região da borda contém palavras-chave de recibo
+        ("RECEBEMOS"/"ASSINATURA"), evitando falsos positivos em cabeçalhos.
+        Lê o número impresso no canhoto; se contíguo à sequência, confiança ALTA;
+        se ilegível, registra o número inferido (min-1 / max+1) em BAIXA p/ revisão.
+        """
+        import pytesseract
+
+        novos = []
+        margem = 10
+        y_first = min(y_por_numero.values())
+        y_last = max(y_por_numero.values())
+        minimo, maximo = min(sequencia), max(sequencia)
+
+        # (nome, caixa_de_recorte, numero_inferido, faixa_contigua)
+        bordas = []
+        if y_first > 60:  # há espaço útil acima do primeiro número
+            bordas.append((
+                'topo',
+                (0, 0, largura, max(1, y_first - margem)),
+                minimo - 1,
+                set(range(minimo - 3, minimo)),
+            ))
+        if altura - y_last > 60:  # há espaço útil abaixo do último número
+            bordas.append((
+                'base',
+                (0, min(altura - 1, y_last + margem), largura, altura),
+                maximo + 1,
+                set(range(maximo + 1, maximo + 4)),
+            ))
+
+        for nome, crop_box, inferido, faixa_contigua in bordas:
+            try:
+                crop = imagem_proc.crop(crop_box)
+                texto_borda = pytesseract.image_to_string(crop, config=self.TESSERACT_CONFIG)
+            except Exception as exc:
+                self.logger.debug('Falha ao recortar borda %s: %s', nome, exc)
+                continue
+
+            if not _RE_STUB_KEYWORDS.search(texto_borda):
+                continue  # sem recibo na borda → nada a detectar
+
+            numeros_borda = []
+            for m in _RE_NUMERO_STUB.findall(texto_borda):
+                num = str(int(m))
+                if num not in numeros_borda:
+                    numeros_borda.append(num)
+            if not numeros_borda:
+                n = self.extrair_numero_nota(texto_borda)
+                if n:
+                    numeros_borda.append(n)
+
+            if numeros_borda:
+                for num in numeros_borda:
+                    if num in numeros_ja:
+                        continue
+                    numeros_ja.add(num)
+                    try:
+                        contiguo = int(num) in faixa_contigua
+                    except ValueError:
+                        contiguo = False
+                    conf = 'ALTA' if contiguo else 'MEDIA'
+                    novos.append({'numero': num, 'confianca': conf, 'origem': f'borda_{nome}'})
+                    self.logger.info('Canhoto na borda %s: NF=%s [%s]', nome, num, conf)
+            elif inferido > 0:
+                inferido_str = str(inferido)
+                if inferido_str not in numeros_ja:
+                    numeros_ja.add(inferido_str)
+                    novos.append({
+                        'numero': inferido_str, 'confianca': 'BAIXA',
+                        'origem': f'borda_{nome}_inferido',
+                    })
+                    self.logger.info(
+                        'Canhoto na borda %s detectado, número ilegível (inferido %s) [BAIXA]',
+                        nome, inferido_str,
+                    )
+
+        return novos
 
     def processar_pagina_canhoto(self, caminho: str) -> dict:
         """
@@ -672,7 +752,7 @@ class OCRService:
         classificacao = self.classificar_pagina(texto)
         if classificacao['tipo_pagina'] != 'CANHOTO':
             canhotos_info = classificacao.get('canhotos_info', [])
-            if classificacao['tipo_pagina'] == 'DIVISORIA_MISTA' and canhotos_info:
+            if classificacao['tipo_pagina'] == 'DIVISORIA_MISTA':
                 canhotos_info = self.analisar_divisoria_espacial(
                     imagem_proc, texto, classificacao,
                 )
