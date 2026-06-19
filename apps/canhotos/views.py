@@ -38,6 +38,8 @@ class CanhotoListView(PersistedFilterMixin, ListView):
     template_name = 'canhotos/lista.html'
     context_object_name = 'canhotos'
     paginate_by = 20
+    session_key = 'canhotos_filtros'
+
     @staticmethod
     def construir_filterset_e_queryset(querydict):
         """
