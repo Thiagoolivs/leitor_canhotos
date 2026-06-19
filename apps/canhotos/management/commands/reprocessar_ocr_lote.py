@@ -5,8 +5,10 @@ Reenfileira para reprocessamento OCR os canhotos já existentes que mais se
 beneficiam do pré-processamento de imagem e da análise espacial — sem
 tocar nos que já foram lidos com sucesso e ALTA confiança.
 
-Exclui automaticamente divisórias e filhos de divisórias para evitar
-criação de registros duplicados.
+Inclui as folhas DIVISÓRIA (para re-rodar a análise espacial, que é
+idempotente — não duplica nem perde filhos já resolvidos), mas exclui os
+FILHOS de divisória: reprocessá-los faria o sistema reclassificar a folha
+inteira como divisória.
 
 Uso:
     # Lista quem seria reprocessado, sem enfileirar nada
@@ -24,8 +26,8 @@ from apps.canhotos.models import Canhoto, StatusProcessamento, TipoPagina
 class Command(BaseCommand):
     help = (
         'Reenfileira para reprocessamento OCR os canhotos com baixa/média confiança, '
-        'sem número detectado, ou em ERRO/REVISAO. Exclui divisórias e filhos de '
-        'divisórias automaticamente.'
+        'sem número detectado, ou em ERRO/REVISAO. Inclui folhas divisória (re-roda '
+        'a análise espacial, idempotente) e exclui filhos de divisória.'
     )
 
     def add_arguments(self, parser):
@@ -39,13 +41,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         dry_run = options['dry_run']
 
-        # Arquivos que pertencem a divisórias — filhos de divisória compartilham
-        # o mesmo arquivo e, se reprocessados, seriam reclassificados como
-        # divisória, criando registros duplicados.
-        arquivos_divisoria = (
+        # Arquivos que pertencem a divisórias. Um FILHO de divisória é um canhoto
+        # (tipo_pagina=CANHOTO) que compartilha o arquivo da folha inteira;
+        # reprocessá-lo reclassificaria a folha como divisória. As folhas PAIS
+        # (DIVISORIA/DIVISORIA_MISTA) continuam elegíveis — reprocessá-las é
+        # idempotente (reaproveita filhos, preserva os já resolvidos).
+        arquivos_divisoria = list(
             Canhoto.objects
             .filter(tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA])
-            .values('arquivo')
+            .values_list('arquivo', flat=True)
         )
 
         candidatos = (
@@ -58,14 +62,13 @@ class Command(BaseCommand):
                 ]),
             )
             .exclude(arquivo='')
-            .exclude(tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA])
-            .exclude(arquivo__in=arquivos_divisoria)
+            .exclude(Q(tipo_pagina=TipoPagina.CANHOTO) & Q(arquivo__in=arquivos_divisoria))
         )
 
         total = candidatos.count()
         self.stdout.write(self.style.HTTP_INFO(
             f'{total} canhoto(s) elegível(eis) para reprocessamento '
-            f'(divisórias e seus filhos excluídos automaticamente).'
+            f'(folhas divisória incluídas; filhos de divisória excluídos).'
         ))
 
         if dry_run:

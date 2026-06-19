@@ -298,9 +298,14 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
     Com AUTO_VINCULAR_ALTA_CONFIANCA habilitado, canhotos com confiança ALTA
     são automaticamente vinculados às notas fiscais correspondentes.
     Canhotos com confiança MEDIA ou BAIXA vão para REVISAO.
+
+    Idempotente: ao REPROCESSAR uma divisória, reaproveita os filhos já
+    existentes (mesmo arquivo + número) em vez de criar duplicados, e
+    PRESERVA intactos os filhos que já foram resolvidos (SUCESSO ou
+    vinculados a uma nota). Assim nenhum canhoto é perdido nem duplicado.
     """
     from repositories.canhoto_repository import CanhotoRepository
-    from apps.canhotos.models import StatusProcessamento, TipoPagina
+    from apps.canhotos.models import Canhoto, StatusProcessamento, TipoPagina
     from services.conciliacao_service import ConciliacaoService
 
     auto_vincular = getattr(settings, 'AUTO_VINCULAR_ALTA_CONFIANCA', True)
@@ -314,14 +319,65 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
         TipoPagina.DIVISORIA_MISTA if tipo_pagina == 'DIVISORIA_MISTA' else TipoPagina.DIVISORIA
     )
 
+    # Filhos já existentes desta divisória (caso de reprocessamento), indexados
+    # por número detectado. São reaproveitados em vez de duplicados.
+    filhos_existentes = {
+        c.numero_detectado: c
+        for c in Canhoto.objects.filter(
+            arquivo=str(canhoto.arquivo),
+            tipo_pagina=TipoPagina.CANHOTO,
+        ).exclude(pk=canhoto.pk)
+    }
+
+    def _preparar_filho(numero, confianca, status_inicial, erro_msg):
+        """
+        Reaproveita o filho existente (sem duplicar) ou cria um novo.
+        Retorna (filho, ja_resolvido). ja_resolvido=True quando o filho já
+        foi vinculado/finalizado antes — nesse caso é preservado intacto.
+        """
+        existente = filhos_existentes.get(numero)
+        if existente is not None:
+            if existente.status_processamento == StatusProcessamento.SUCESSO or existente.nota_id:
+                return existente, True
+            repo.atualizar(
+                existente,
+                status_processamento=status_inicial,
+                confianca_deteccao=confianca,
+                tipo_pagina=TipoPagina.CANHOTO,
+                texto_ocr=texto_ocr,
+                erro_mensagem=erro_msg,
+            )
+            return existente, False
+        novo = repo.criar(
+            arquivo=str(canhoto.arquivo),
+            status_processamento=status_inicial,
+            tipo_pagina=TipoPagina.CANHOTO,
+            numero_detectado=numero,
+            confianca_deteccao=confianca,
+            pagina_numero=canhoto.pagina_numero,
+            texto_ocr=texto_ocr,
+            erro_mensagem=erro_msg,
+        )
+        filhos_existentes[numero] = novo
+        return novo, False
+
+    # Sem info detalhada (compatibilidade): usa a lista simples de números.
+    canhotos_a_criar = canhotos_info
+    if tipo_pagina == 'DIVISORIA_MISTA' and not canhotos_a_criar:
+        canhotos_a_criar = [
+            {'numero': s, 'confianca': 'BAIXA', 'origem': 'lista'}
+            for s in resultado_ocr.get('numeros_canhotos', []) if s
+        ]
+
     filhos = []
     auto_vinculados = []
+    preservados = []
     revisao = []
 
-    if tipo_pagina == 'DIVISORIA_MISTA' and canhotos_info:
+    if tipo_pagina == 'DIVISORIA_MISTA' and canhotos_a_criar:
         conciliacao_service = ConciliacaoService()
 
-        for info in canhotos_info:
+        for info in canhotos_a_criar:
             numero = info.get('numero', '')
             confianca = info.get('confianca', 'BAIXA')
             origem = info.get('origem', '')
@@ -329,16 +385,14 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
                 continue
 
             if auto_vincular and confianca == 'ALTA':
-                filho = repo.criar(
-                    arquivo=str(canhoto.arquivo),
-                    status_processamento=StatusProcessamento.PROCESSANDO,
-                    tipo_pagina=TipoPagina.CANHOTO,
-                    numero_detectado=numero,
-                    confianca_deteccao=confianca,
-                    pagina_numero=canhoto.pagina_numero,
-                    texto_ocr=texto_ocr,
+                filho, ja_resolvido = _preparar_filho(
+                    numero, confianca, StatusProcessamento.PROCESSANDO, '',
                 )
-                filhos.append(filho.id)
+                if filho.id not in filhos:
+                    filhos.append(filho.id)
+                if ja_resolvido:
+                    preservados.append(numero)
+                    continue
                 try:
                     conciliacao_service.conciliar(filho.id, numero)
                     auto_vinculados.append(numero)
@@ -357,42 +411,25 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
                         '[DIVISÓRIA] Auto-vinculação falhou NF %s: %s', numero, exc,
                     )
             else:
-                filho = repo.criar(
-                    arquivo=str(canhoto.arquivo),
-                    status_processamento=StatusProcessamento.REVISAO,
-                    tipo_pagina=TipoPagina.CANHOTO,
-                    numero_detectado=numero,
-                    confianca_deteccao=confianca,
-                    pagina_numero=canhoto.pagina_numero,
-                    texto_ocr=texto_ocr,
-                    erro_mensagem=f'Confirmar manualmente (confiança {confianca}, via {origem}).',
+                filho, ja_resolvido = _preparar_filho(
+                    numero, confianca, StatusProcessamento.REVISAO,
+                    f'Confirmar manualmente (confiança {confianca}, via {origem}).',
                 )
-                filhos.append(filho.id)
-                revisao.append(numero)
+                if filho.id not in filhos:
+                    filhos.append(filho.id)
+                if ja_resolvido:
+                    preservados.append(numero)
+                else:
+                    revisao.append(numero)
 
-    elif tipo_pagina == 'DIVISORIA_MISTA':
-        for stub in resultado_ocr.get('numeros_canhotos', []):
-            if not stub:
-                continue
-            filho = repo.criar(
-                arquivo=str(canhoto.arquivo),
-                status_processamento=StatusProcessamento.REVISAO,
-                tipo_pagina=TipoPagina.CANHOTO,
-                numero_detectado=stub,
-                confianca_deteccao='BAIXA',
-                pagina_numero=canhoto.pagina_numero,
-                erro_mensagem='Canhoto extraído de folha divisória — confirmar manualmente.',
-            )
-            filhos.append(filho.id)
-            revisao.append(stub)
-
-    if auto_vinculados and not revisao:
+    resolvidos = auto_vinculados + preservados
+    if resolvidos and not revisao:
         parent_status = StatusProcessamento.SUCESSO
-        msg = f'Divisória processada: {len(auto_vinculados)} canhoto(s) vinculado(s) automaticamente.'
-    elif auto_vinculados:
+        msg = f'Divisória processada: {len(resolvidos)} canhoto(s) resolvido(s).'
+    elif resolvidos:
         parent_status = StatusProcessamento.REVISAO
         msg = (
-            f'{len(auto_vinculados)} vinculado(s) automaticamente, '
+            f'{len(resolvidos)} resolvido(s) automaticamente, '
             f'{len(revisao)} aguardando revisão.'
         )
     else:
@@ -415,9 +452,9 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
     )
 
     logger.info(
-        '[CANHOTO] Divisória %s (id=%s): %d números, %d filho(s), %d auto, %d revisão',
+        '[CANHOTO] Divisória %s (id=%s): %d números, %d filho(s), %d auto, %d preservado(s), %d revisão',
         tipo_pagina, canhoto.id, len(sequencia), len(filhos),
-        len(auto_vinculados), len(revisao),
+        len(auto_vinculados), len(preservados), len(revisao),
     )
     return {
         'status': 'divisoria',
@@ -426,6 +463,7 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
         'numeros': sequencia,
         'filhos': filhos,
         'auto_vinculados': auto_vinculados,
+        'preservados': preservados,
         'revisao': revisao,
     }
 
