@@ -296,8 +296,8 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
     Trata uma folha divisória detectada.
 
     Com AUTO_VINCULAR_ALTA_CONFIANCA habilitado, canhotos com confiança ALTA
-    são automaticamente vinculados às notas fiscais correspondentes.
-    Canhotos com confiança MEDIA ou BAIXA vão para REVISAO.
+    ou MEDIA são automaticamente vinculados às notas fiscais correspondentes.
+    Canhotos com confiança BAIXA vão para REVISAO.
 
     Idempotente: ao REPROCESSAR uma divisória, reaproveita os filhos já
     existentes (mesmo arquivo + número) em vez de criar duplicados, e
@@ -384,7 +384,7 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
             if not numero:
                 continue
 
-            if auto_vincular and confianca == 'ALTA':
+            if auto_vincular and confianca in ('ALTA', 'MEDIA'):
                 filho, ja_resolvido = _preparar_filho(
                     numero, confianca, StatusProcessamento.PROCESSANDO, '',
                 )
