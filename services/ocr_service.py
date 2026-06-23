@@ -856,9 +856,9 @@ class OCRService:
             self.logger.info('Nenhum número de nota encontrado no texto.')
             return None
 
-        tem_grande = any(n_digits >= 4 for _, _, n_digits in candidatos)
+        tem_grande = any(n_digits >= 3 for _, _, n_digits in candidatos)
         if tem_grande:
-            candidatos = [(i, num, nd) for i, num, nd in candidatos if nd >= 4]
+            candidatos = [(i, num, nd) for i, num, nd in candidatos if nd >= 3]
 
         candidatos.sort(key=lambda x: (x[0], -x[2]))
         escolhido = candidatos[0][1]
