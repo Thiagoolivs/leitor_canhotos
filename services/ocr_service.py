@@ -103,10 +103,10 @@ class OCRService:
             settings,
             'NOTA_NUMBER_PATTERNS',
             [
-                r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{1,9})',
-                r'N[Oo°\.º]\s+NOTA\s+FISCAL\s*:?\s*(\d{1,9})',
-                r'N[Oo°\.º\.]\s*:?\s*(\d{1,9})',
-                r'NF[-\s]*[Ee]?\s*:?\s*(\d{1,9})',
+                r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{4,9})',
+                r'N[Oo°\.º]\s+NOTA\s+FISCAL\s*:?\s*(\d{4,9})',
+                r'N[Oo°\.º\.]\s*:?\s*(\d{4,9})',
+                r'NF[-\s]*[Ee]?\s*:?\s*(\d{4,9})',
                 r'(?:^|\s)(\d{6,9})(?:\s|$)',
             ],
         )

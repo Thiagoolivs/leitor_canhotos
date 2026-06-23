@@ -284,13 +284,13 @@ POPPLER_PATH = _resolve_poppler_path()
 # Ordered from most specific to least specific to minimize false positives.
 NOTA_NUMBER_PATTERNS = [
     # "NOTA FISCAL ELETRÔNICA N. 000154108" ou "NOTA FISCAL Nº 154108"
-    r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{1,9})',
+    r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{4,9})',
     # "Nº NOTA FISCAL: 154108" (formato do certificado de conformidade)
-    r'N[Oo°\.º]\s+NOTA\s+FISCAL\s*:?\s*(\d{1,9})',
+    r'N[Oo°\.º]\s+NOTA\s+FISCAL\s*:?\s*(\d{4,9})',
     # "N. 000154108" ou "N° 154108"
-    r'N[Oo°\.º\.]\s*:?\s*(\d{1,9})',
+    r'N[Oo°\.º\.]\s*:?\s*(\d{4,9})',
     # "NF-e" ou "NF:" seguido do numero
-    r'NF[-\s]*[Ee]?\s*:?\s*(\d{1,9})',
+    r'NF[-\s]*[Ee]?\s*:?\s*(\d{4,9})',
     # Numero isolado de 6 a 9 digitos (fallback)
     r'(?:^|\s)(\d{6,9})(?:\s|$)',
 ]
