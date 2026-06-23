@@ -523,16 +523,20 @@ def _tentar_fallback_ia(texto_ocr: str, numero_atual: Optional[str] = None) -> O
     ou None se falhar/desabilitado/não encontrar.
     """
     try:
+        logger.info('[IA] Tentando fallback (numero_atual=%s)', numero_atual)
         from services.ai_service import AIService
         resultado = AIService().analisar_texto_ocr(texto_ocr)
         if resultado and resultado.get('numero'):
+            logger.info('[IA] Fallback retornou numero=%s', resultado.get('numero'))
             if resultado.get('confianca') != 'BAIXA':
                 return resultado
             if numero_atual and resultado['numero'] == numero_atual:
                 resultado['confianca'] = 'MEDIA'
                 return resultado
+        else:
+            logger.warning('[IA] Fallback não encontrou número')
     except Exception as exc:
-        logger.warning('[IA] Fallback falhou: %s', exc)
+        logger.error('[IA] Fallback falhou com exceção: %s', exc, exc_info=True)
     return None
 
 

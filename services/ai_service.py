@@ -45,6 +45,10 @@ class AIService:
         self.api_key = getattr(settings, 'GROQ_API_KEY', '')
         self.model = getattr(settings, 'GROQ_MODEL', 'llama-3.3-70b-versatile')
         self.habilitado = bool(self.api_key) and getattr(settings, 'AI_FALLBACK_HABILITADO', True)
+        if self.habilitado:
+            logger.info('[IA] Serviço iniciado: modelo=%s, api_key_presente=%s', self.model, bool(self.api_key))
+        else:
+            logger.warning('[IA] Serviço DESABILITADO (api_key=%s, fallback_habilitado=%s)', bool(self.api_key), getattr(settings, 'AI_FALLBACK_HABILITADO', True))
 
     def analisar_texto_ocr(self, texto_ocr: str) -> Optional[dict]:
         """
@@ -54,16 +58,17 @@ class AIService:
             dict com {numero, confianca, motivo} ou None se falhar/desabilitado.
         """
         if not self.habilitado:
-            logger.debug('AI fallback desabilitado (sem API key ou desativado)')
+            logger.warning('[IA] Fallback desabilitado (sem API key ou desativado)')
             return None
 
         if not texto_ocr or len(texto_ocr.strip()) < 10:
-            logger.debug('Texto OCR muito curto para análise por IA')
+            logger.warning('[IA] Texto OCR muito curto (%d chars)', len(texto_ocr) if texto_ocr else 0)
             return None
 
         texto_truncado = texto_ocr[:2000]
 
         try:
+            logger.info('[IA] Enviando %d chars para Groq (%s)...', len(texto_truncado), self.model)
             from groq import Groq
             client = Groq(api_key=self.api_key)
 
@@ -78,18 +83,20 @@ class AIService:
             )
 
             texto_resposta = response.choices[0].message.content.strip()
-            logger.debug('Resposta da IA (Groq): %s', texto_resposta)
+            logger.info('[IA] Resposta recebida: %s', texto_resposta[:100])
 
             resultado = self._parse_resposta(texto_resposta)
             if resultado:
                 logger.info(
-                    'IA extraiu: numero=%s confianca=%s motivo=%s',
+                    '[IA] Sucesso! numero=%s confianca=%s motivo=%s',
                     resultado.get('numero'), resultado.get('confianca'), resultado.get('motivo'),
                 )
+            else:
+                logger.warning('[IA] Não conseguiu parsear resposta')
             return resultado
 
         except Exception as exc:
-            logger.warning('Erro ao chamar API Groq: %s', exc)
+            logger.error('[IA] ERRO ao chamar Groq: %s', exc, exc_info=True)
             return None
 
     def _parse_resposta(self, texto: str) -> Optional[dict]:
