@@ -103,10 +103,10 @@ class OCRService:
             settings,
             'NOTA_NUMBER_PATTERNS',
             [
-                r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{4,9})',
-                r'N[Oo°\.º]\s+NOTA\s+FISCAL\s*:?\s*(\d{4,9})',
-                r'N[Oo°\.º\.]\s*:?\s*(\d{4,9})',
-                r'NF[-\s]*[Ee]?\s*:?\s*(\d{4,9})',
+                r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{1,9})',
+                r'N[Oo°\.º]\s+NOTA\s+FISCAL\s*:?\s*(\d{1,9})',
+                r'N[Oo°\.º\.]\s*:?\s*(\d{1,9})',
+                r'NF[-\s]*[Ee]?\s*:?\s*(\d{1,9})',
                 r'(?:^|\s)(\d{6,9})(?:\s|$)',
             ],
         )
@@ -830,25 +830,43 @@ class OCRService:
     # ------------------------------------------------------------------
 
     def extrair_numero_nota(self, texto: str) -> Optional[str]:
-        """Busca o número da NF no texto usando os padrões configurados."""
+        """
+        Busca o número da NF no texto usando os padrões configurados.
+
+        Coleta TODOS os candidatos de todos os padrões. Se houver candidatos
+        com 4+ dígitos, descarta os menores (que são série, folha, página).
+        Retorna o candidato do padrão mais específico (primeiro na lista).
+        """
         if not texto:
             return None
         texto_upper = texto.upper()
-        for pattern in self.patterns:
+        candidatos = []
+
+        for i, pattern in enumerate(self.patterns):
             try:
-                matches = re.findall(pattern, texto_upper, re.MULTILINE | re.IGNORECASE)
-                if matches:
-                    numero_raw = matches[0].strip()
-                    numero = str(int(numero_raw)) if numero_raw.isdigit() else numero_raw
-                    self.logger.debug(
-                        'Número encontrado com padrão "%s": %s (raw: %s)',
-                        pattern, numero, numero_raw,
-                    )
-                    return numero
+                for raw in re.findall(pattern, texto_upper, re.MULTILINE | re.IGNORECASE):
+                    raw = raw.strip()
+                    numero = str(int(raw)) if raw.isdigit() else raw
+                    if numero:
+                        candidatos.append((i, numero, len(numero)))
             except re.error as exc:
                 self.logger.warning('Padrão regex inválido "%s": %s', pattern, exc)
-        self.logger.info('Nenhum número de nota encontrado no texto.')
-        return None
+
+        if not candidatos:
+            self.logger.info('Nenhum número de nota encontrado no texto.')
+            return None
+
+        tem_grande = any(n_digits >= 4 for _, _, n_digits in candidatos)
+        if tem_grande:
+            candidatos = [(i, num, nd) for i, num, nd in candidatos if nd >= 4]
+
+        candidatos.sort(key=lambda x: (x[0], -x[2]))
+        escolhido = candidatos[0][1]
+        self.logger.debug(
+            'Número escolhido: %s (de %d candidatos, filtro_grande=%s)',
+            escolhido, len(candidatos), tem_grande,
+        )
+        return escolhido
 
     def extrair_data_emissao(self, texto: str) -> Optional[date]:
         """Extrai data de emissão do texto DANFE."""
