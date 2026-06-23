@@ -120,20 +120,41 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                 CanhotoRepository().atualizar(canhoto, **campos_extras)
 
                 if not numero_nota:
-                    _finalizar_canhoto_erro(canhoto, 'numero_nota_nao_detectado_no_ocr')
-                    _logger.warning('[CANHOTO] Numero nao detectado em %s', caminho.name)
-                    return {'status': 'erro', 'motivo': 'numero_nao_detectado'}
+                    # Fallback IA: tenta extrair número que o OCR não conseguiu
+                    resultado_ia = _tentar_fallback_ia(resultado_ocr.get('texto', ''))
+                    if resultado_ia:
+                        numero_nota = resultado_ia['numero']
+                        CanhotoRepository().atualizar(canhoto, numero_detectado=numero_nota)
+                        _logger.info(
+                            '[CANHOTO] IA encontrou NF=%s (OCR não detectou) motivo: %s',
+                            numero_nota, resultado_ia.get('motivo', ''),
+                        )
+                    else:
+                        _finalizar_canhoto_erro(canhoto, 'numero_nota_nao_detectado_no_ocr')
+                        _logger.warning('[CANHOTO] Numero nao detectado em %s', caminho.name)
+                        return {'status': 'erro', 'motivo': 'numero_nao_detectado'}
 
                 confianca = resultado_ocr.get('confianca', 'BAIXA')
                 if getattr(settings, 'AUTO_VINCULAR_ALTA_CONFIANCA', True) and confianca == 'BAIXA':
-                    from apps.canhotos.models import StatusProcessamento as _SP
-                    CanhotoRepository().atualizar(
-                        canhoto,
-                        status_processamento=_SP.REVISAO,
-                        erro_mensagem=f'Confiança baixa ({confianca}) — confirmar número manualmente.',
-                    )
-                    _logger.info('[CANHOTO] Confiança BAIXA → REVISAO: NF=%s', numero_nota)
-                    return {'status': 'revisao', 'motivo': 'confianca_baixa', 'numero': numero_nota}
+                    # Fallback: tenta IA antes de mandar para revisão manual
+                    resultado_ia = _tentar_fallback_ia(resultado_ocr.get('texto', ''), numero_nota)
+                    if resultado_ia:
+                        numero_nota = resultado_ia['numero']
+                        confianca = 'MEDIA'
+                        CanhotoRepository().atualizar(canhoto, numero_detectado=numero_nota)
+                        _logger.info(
+                            '[CANHOTO] IA recuperou NF=%s (motivo: %s) → MEDIA',
+                            numero_nota, resultado_ia.get('motivo', ''),
+                        )
+                    else:
+                        from apps.canhotos.models import StatusProcessamento as _SP
+                        CanhotoRepository().atualizar(
+                            canhoto,
+                            status_processamento=_SP.REVISAO,
+                            erro_mensagem=f'Confiança baixa ({confianca}) — confirmar número manualmente.',
+                        )
+                        _logger.info('[CANHOTO] Confiança BAIXA → REVISAO: NF=%s', numero_nota)
+                        return {'status': 'revisao', 'motivo': 'confianca_baixa', 'numero': numero_nota}
 
                 conciliacao_service = ConciliacaoService()
                 try:
@@ -411,16 +432,43 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
                         '[DIVISÓRIA] Auto-vinculação falhou NF %s: %s', numero, exc,
                     )
             else:
-                filho, ja_resolvido = _preparar_filho(
-                    numero, confianca, StatusProcessamento.REVISAO,
-                    f'Confirmar manualmente (confiança {confianca}, via {origem}).',
-                )
-                if filho.id not in filhos:
-                    filhos.append(filho.id)
-                if ja_resolvido:
-                    preservados.append(numero)
+                # Confiança BAIXA: tenta IA antes de mandar para revisão
+                resultado_ia = _tentar_fallback_ia(texto_ocr, numero)
+                if resultado_ia and auto_vincular:
+                    numero_ia = resultado_ia['numero']
+                    logger.info(
+                        '[DIVISÓRIA] IA recuperou NF=%s (original=%s, motivo=%s)',
+                        numero_ia, numero, resultado_ia.get('motivo', ''),
+                    )
+                    filho, ja_resolvido = _preparar_filho(
+                        numero_ia, 'MEDIA', StatusProcessamento.PROCESSANDO, '',
+                    )
+                    if filho.id not in filhos:
+                        filhos.append(filho.id)
+                    if ja_resolvido:
+                        preservados.append(numero_ia)
+                    else:
+                        try:
+                            conciliacao_service.conciliar(filho.id, numero_ia)
+                            auto_vinculados.append(numero_ia)
+                        except Exception as exc:
+                            repo.atualizar(
+                                filho,
+                                status_processamento=StatusProcessamento.REVISAO,
+                                erro_mensagem=f'Auto-vinculação (via IA) falhou: {exc}',
+                            )
+                            revisao.append(numero_ia)
                 else:
-                    revisao.append(numero)
+                    filho, ja_resolvido = _preparar_filho(
+                        numero, confianca, StatusProcessamento.REVISAO,
+                        f'Confirmar manualmente (confiança {confianca}, via {origem}).',
+                    )
+                    if filho.id not in filhos:
+                        filhos.append(filho.id)
+                    if ja_resolvido:
+                        preservados.append(numero)
+                    else:
+                        revisao.append(numero)
 
     resolvidos = auto_vinculados + preservados
     if resolvidos and not revisao:
@@ -466,6 +514,26 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
         'preservados': preservados,
         'revisao': revisao,
     }
+
+
+def _tentar_fallback_ia(texto_ocr: str, numero_atual: Optional[str] = None) -> Optional[dict]:
+    """
+    Tenta usar IA para extrair o número da NF de texto OCR incerto.
+    Retorna dict com {numero, confianca, motivo} se a IA encontrar um número,
+    ou None se falhar/desabilitado/não encontrar.
+    """
+    try:
+        from services.ai_service import AIService
+        resultado = AIService().analisar_texto_ocr(texto_ocr)
+        if resultado and resultado.get('numero'):
+            if resultado.get('confianca') != 'BAIXA':
+                return resultado
+            if numero_atual and resultado['numero'] == numero_atual:
+                resultado['confianca'] = 'MEDIA'
+                return resultado
+    except Exception as exc:
+        logger.warning('[IA] Fallback falhou: %s', exc)
+    return None
 
 
 def _finalizar_canhoto_erro(canhoto, mensagem: str) -> None:

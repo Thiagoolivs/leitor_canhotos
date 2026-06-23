@@ -239,6 +239,16 @@ SCANNER_ERROR_DIR = config('SCANNER_ERROR_DIR', default='/erro')
 # Canhotos com confiança BAIXA vão para REVISAO em vez de auto-vincular.
 AUTO_VINCULAR_ALTA_CONFIANCA = config('AUTO_VINCULAR_ALTA_CONFIANCA', default=True, cast=bool)
 
+# ==============================================================================
+# AI FALLBACK (Claude Haiku)
+# Quando o OCR retorna confiança BAIXA, o texto é enviado para a IA para
+# tentar extrair o número da nota fiscal antes de mandar para revisão manual.
+# ==============================================================================
+
+ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default='')
+AI_MODEL = config('AI_MODEL', default='claude-haiku-4-5')
+AI_FALLBACK_HABILITADO = config('AI_FALLBACK_HABILITADO', default=True, cast=bool)
+
 # Tesseract executable path (overridable via env for Windows)
 import pytesseract as _pytesseract
 _tesseract_cmd = config('TESSERACT_CMD', default='tesseract')
