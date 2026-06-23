@@ -240,13 +240,13 @@ SCANNER_ERROR_DIR = config('SCANNER_ERROR_DIR', default='/erro')
 AUTO_VINCULAR_ALTA_CONFIANCA = config('AUTO_VINCULAR_ALTA_CONFIANCA', default=True, cast=bool)
 
 # ==============================================================================
-# AI FALLBACK (Claude Haiku)
+# AI FALLBACK (Groq / Llama)
 # Quando o OCR retorna confiança BAIXA, o texto é enviado para a IA para
 # tentar extrair o número da nota fiscal antes de mandar para revisão manual.
 # ==============================================================================
 
-ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default='')
-AI_MODEL = config('AI_MODEL', default='claude-haiku-4-5')
+GROQ_API_KEY = config('GROQ_API_KEY', default='')
+GROQ_MODEL = config('GROQ_MODEL', default='llama-3.3-70b-versatile')
 AI_FALLBACK_HABILITADO = config('AI_FALLBACK_HABILITADO', default=True, cast=bool)
 
 # Tesseract executable path (overridable via env for Windows)

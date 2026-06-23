@@ -1,7 +1,7 @@
 """
 Serviço de IA para análise de texto OCR incerto.
 
-Usa Claude Haiku como fallback quando o Tesseract retorna confiança BAIXA.
+Usa Groq (Llama) como fallback quando o Tesseract retorna confiança BAIXA.
 Envia o texto OCR bruto e pede para a IA extrair o número da nota fiscal.
 """
 import json
@@ -39,11 +39,11 @@ _PROMPT_USUARIO = (
 
 
 class AIService:
-    """Analisa texto OCR incerto usando Claude Haiku como fallback."""
+    """Analisa texto OCR incerto usando Groq (Llama) como fallback."""
 
     def __init__(self):
-        self.api_key = getattr(settings, 'ANTHROPIC_API_KEY', '')
-        self.model = getattr(settings, 'AI_MODEL', 'claude-haiku-4-5')
+        self.api_key = getattr(settings, 'GROQ_API_KEY', '')
+        self.model = getattr(settings, 'GROQ_MODEL', 'llama-3.3-70b-versatile')
         self.habilitado = bool(self.api_key) and getattr(settings, 'AI_FALLBACK_HABILITADO', True)
 
     def analisar_texto_ocr(self, texto_ocr: str) -> Optional[dict]:
@@ -64,20 +64,21 @@ class AIService:
         texto_truncado = texto_ocr[:2000]
 
         try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=self.api_key)
+            from groq import Groq
+            client = Groq(api_key=self.api_key)
 
-            response = client.messages.create(
+            response = client.chat.completions.create(
                 model=self.model,
                 max_tokens=200,
-                system=_PROMPT_SISTEMA,
+                temperature=0,
                 messages=[
+                    {'role': 'system', 'content': _PROMPT_SISTEMA},
                     {'role': 'user', 'content': _PROMPT_USUARIO.format(texto=texto_truncado)},
                 ],
             )
 
-            texto_resposta = response.content[0].text.strip()
-            logger.debug('Resposta da IA: %s', texto_resposta)
+            texto_resposta = response.choices[0].message.content.strip()
+            logger.debug('Resposta da IA (Groq): %s', texto_resposta)
 
             resultado = self._parse_resposta(texto_resposta)
             if resultado:
@@ -88,7 +89,7 @@ class AIService:
             return resultado
 
         except Exception as exc:
-            logger.warning('Erro ao chamar API de IA: %s', exc)
+            logger.warning('Erro ao chamar API Groq: %s', exc)
             return None
 
     def _parse_resposta(self, texto: str) -> Optional[dict]:
