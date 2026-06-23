@@ -246,6 +246,8 @@ AUTO_VINCULAR_ALTA_CONFIANCA = config('AUTO_VINCULAR_ALTA_CONFIANCA', default=Tr
 # ==============================================================================
 
 GROQ_API_KEY = config('GROQ_API_KEY', default='')
+GROQ_API_KEY_2 = config('GROQ_API_KEY_2', default='')
+GROQ_API_KEY_3 = config('GROQ_API_KEY_3', default='')
 GROQ_MODEL = config('GROQ_MODEL', default='llama-3.3-70b-versatile')
 AI_FALLBACK_HABILITADO = config('AI_FALLBACK_HABILITADO', default=True, cast=bool)
 
