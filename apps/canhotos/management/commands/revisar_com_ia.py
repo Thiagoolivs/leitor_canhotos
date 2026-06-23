@@ -42,10 +42,17 @@ class Command(BaseCommand):
             default=0,
             help='Limita a N canhotos (0 = todos).',
         )
+        parser.add_argument(
+            '--diagnostico',
+            action='store_true',
+            default=False,
+            help='Mostra o texto OCR e a resposta da IA para cada canhoto.',
+        )
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
         limite = options['limite']
+        diagnostico = options['diagnostico']
 
         from services.ai_service import AIService
         ai = AIService()
@@ -100,7 +107,16 @@ class Command(BaseCommand):
                 ending=' ',
             )
 
-            resultado = ai.analisar_texto_ocr(canhoto.texto_ocr)
+            if diagnostico:
+                self.stdout.write('')
+                self.stdout.write(f'  TEXTO OCR ({len(canhoto.texto_ocr)} chars):')
+                self.stdout.write(f'  {canhoto.texto_ocr[:300]}')
+                self.stdout.write(f'  ---')
+
+            resultado = ai.analisar_texto_ocr(canhoto.texto_ocr, canhoto.numero_detectado or '')
+
+            if diagnostico and resultado:
+                self.stdout.write(f'  RESPOSTA IA: {resultado}')
 
             if not resultado or not resultado.get('numero'):
                 self.stdout.write(self.style.WARNING('IA não encontrou número.'))

@@ -535,7 +535,7 @@ def _tentar_fallback_ia(texto_ocr: str, numero_atual: Optional[str] = None) -> O
     try:
         logger.info('[IA] Tentando fallback (numero_atual=%s)', numero_atual)
         from services.ai_service import AIService
-        resultado = AIService().analisar_texto_ocr(texto_ocr)
+        resultado = AIService().analisar_texto_ocr(texto_ocr, numero_atual or '')
         if resultado and resultado.get('numero'):
             logger.info('[IA] Fallback retornou numero=%s', resultado.get('numero'))
             if resultado.get('confianca') != 'BAIXA':

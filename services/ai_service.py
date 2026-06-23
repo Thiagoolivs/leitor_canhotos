@@ -19,26 +19,41 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 _PROMPT_SISTEMA = (
-    'Você é um assistente especializado em ler textos OCR de canhotos de notas '
-    'fiscais brasileiras (DANFE). O texto vem de um scan físico e pode conter '
-    'erros de OCR (letras trocadas, espaços extras, caracteres especiais). '
-    'Sua tarefa é encontrar o NÚMERO DA NOTA FISCAL no texto.'
+    'Você é um assistente especializado em ler canhotos de notas fiscais '
+    'brasileiras (DANFE). Você recebe texto extraído por OCR de scans físicos. '
+    'O texto pode conter erros de OCR (letras trocadas, espaços extras, '
+    'caracteres especiais, números cortados). Sua tarefa é encontrar o '
+    'NÚMERO DA NOTA FISCAL no texto. Responda SEMPRE com JSON válido.'
 )
 
-_PROMPT_USUARIO = (
-    'Analise o texto OCR abaixo de um canhoto de nota fiscal e extraia o número '
-    'da nota fiscal. O número geralmente tem entre 5 e 9 dígitos.\n\n'
-    'Procure por padrões como:\n'
-    '- "N." ou "Nº" seguido de dígitos\n'
+_PROMPT_EXTRAIR = (
+    'Extraia o número da nota fiscal do texto OCR abaixo.\n\n'
+    'O número da NF geralmente tem entre 3 e 9 dígitos e aparece próximo a:\n'
+    '- "N.", "Nº", "N°" seguido de dígitos (ex: "N. 000154108")\n'
     '- "NOTA FISCAL" seguido de número\n'
     '- "NF" ou "NF-e" seguido de número\n'
-    '- Números isolados de 5 a 9 dígitos que pareçam ser o número da NF\n'
-    '- Números com zeros à esquerda (ex: 000154108 = 154108)\n\n'
-    'Responda APENAS com um JSON no formato:\n'
-    '{{"numero": "123456", "confianca": "ALTA ou MEDIA ou BAIXA", '
-    '"motivo": "breve explicação"}}\n\n'
-    'Se não encontrar nenhum número de nota fiscal, responda:\n'
-    '{{"numero": null, "confianca": "BAIXA", "motivo": "motivo"}}\n\n'
+    '- "RECEBEMOS DE" — o canhoto do DANFE sempre tem esse texto\n'
+    '- Pode ter zeros à esquerda: "000154108" = NF 154108\n\n'
+    'IGNORE números que são CNPJ (XX.XXX.XXX/XXXX-XX), CEP, telefone, '
+    'NCM (8 dígitos tipo 73101090), CFOP (4 dígitos tipo 5101/6102), '
+    'ou códigos de barras (44 dígitos).\n\n'
+    'Responda APENAS com JSON:\n'
+    '{{"numero": "154108", "confianca": "ALTA", "motivo": "encontrado após Nº"}}\n\n'
+    'Se não encontrar, responda:\n'
+    '{{"numero": null, "confianca": "BAIXA", "motivo": "texto ilegível"}}\n\n'
+    'Texto OCR:\n---\n{texto}\n---'
+)
+
+_PROMPT_CONFIRMAR = (
+    'O OCR detectou o possível número de nota fiscal {numero_detectado} no texto '
+    'abaixo, mas com baixa confiança.\n\n'
+    'Analise o texto e responda:\n'
+    '1. O número {numero_detectado} está correto? Confirme se aparece no contexto '
+    'certo (próximo a "N.", "Nº", "NOTA FISCAL", "NF", "RECEBEMOS DE").\n'
+    '2. Se o número estiver ERRADO, extraia o número correto.\n\n'
+    'IGNORE CNPJ, CEP, NCM (73101090), CFOP (5101/6102), códigos de barras (44 dígitos).\n\n'
+    'Responda APENAS com JSON:\n'
+    '{{"numero": "154108", "confianca": "ALTA", "motivo": "confirmado no texto"}}\n\n'
     'Texto OCR:\n---\n{texto}\n---'
 )
 
@@ -82,9 +97,13 @@ class AIService:
         else:
             logger.warning('[IA] Serviço DESABILITADO (sem API key ou desativado)')
 
-    def analisar_texto_ocr(self, texto_ocr: str) -> Optional[dict]:
+    def analisar_texto_ocr(self, texto_ocr: str, numero_detectado: str = '') -> Optional[dict]:
         """
         Envia texto OCR para a IA e retorna o número da NF extraído.
+
+        Args:
+            texto_ocr: texto extraído pelo Tesseract.
+            numero_detectado: número já detectado pelo OCR (para confirmar/corrigir).
 
         Returns:
             dict com {numero, confianca, motivo} ou None se falhar/desabilitado.
@@ -100,8 +119,15 @@ class AIService:
         texto_truncado = texto_ocr[:2000]
         api_key = _proxima_chave()
 
+        if numero_detectado:
+            prompt_user = _PROMPT_CONFIRMAR.format(
+                texto=texto_truncado, numero_detectado=numero_detectado,
+            )
+        else:
+            prompt_user = _PROMPT_EXTRAIR.format(texto=texto_truncado)
+
         try:
-            logger.info('[IA] Enviando %d chars para Groq (%s, key=...%s)...', len(texto_truncado), self.model, api_key[-4:])
+            logger.info('[IA] Enviando %d chars para Groq (%s, key=...%s, numero_atual=%s)...', len(texto_truncado), self.model, api_key[-4:], numero_detectado or 'nenhum')
             from groq import Groq
             client = Groq(api_key=api_key)
 
@@ -111,7 +137,7 @@ class AIService:
                 temperature=0,
                 messages=[
                     {'role': 'system', 'content': _PROMPT_SISTEMA},
-                    {'role': 'user', 'content': _PROMPT_USUARIO.format(texto=texto_truncado)},
+                    {'role': 'user', 'content': prompt_user},
                 ],
             )
 
