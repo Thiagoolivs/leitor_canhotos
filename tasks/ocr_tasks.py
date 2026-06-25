@@ -130,14 +130,9 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                             numero_nota, resultado_ia.get('motivo', ''),
                         )
                     else:
-                        from apps.canhotos.models import StatusProcessamento as _SP
-                        CanhotoRepository().atualizar(
-                            canhoto,
-                            status_processamento=_SP.REVISAO,
-                            erro_mensagem='OCR e IA não conseguiram detectar o número da nota.',
-                        )
-                        _logger.warning('[CANHOTO] Numero nao detectado em %s → REVISAO', caminho.name)
-                        return {'status': 'revisao', 'motivo': 'numero_nao_detectado'}
+                        _finalizar_canhoto_erro(canhoto, 'OCR e IA não conseguiram detectar o número da nota.')
+                        _logger.warning('[CANHOTO] Numero nao detectado em %s → ERRO', caminho.name)
+                        return {'status': 'erro', 'motivo': 'numero_nao_detectado'}
 
                 confianca = resultado_ocr.get('confianca', 'BAIXA')
                 if getattr(settings, 'AUTO_VINCULAR_ALTA_CONFIANCA', True) and confianca == 'BAIXA':
@@ -167,14 +162,9 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                     _logger.info('[CANHOTO] Conciliado NF %s (pág %s)', numero_nota, pagina_num)
                     return {'status': 'sucesso', 'tipo': 'canhoto', 'numero': numero_nota, 'conciliado': resultado.sucesso}
                 except Exception as exc_concil:
-                    from apps.canhotos.models import StatusProcessamento as _SP
-                    CanhotoRepository().atualizar(
-                        canhoto,
-                        status_processamento=_SP.REVISAO,
-                        erro_mensagem=f'NF {numero_nota} não encontrada no sistema.',
-                    )
-                    _logger.warning('[CANHOTO] Conciliacao falhou para NF %s → REVISAO: %s', numero_nota, exc_concil)
-                    return {'status': 'revisao', 'motivo': str(exc_concil), 'numero': numero_nota}
+                    _finalizar_canhoto_erro(canhoto, str(exc_concil))
+                    _logger.warning('[CANHOTO] Conciliacao falhou para NF %s: %s', numero_nota, exc_concil)
+                    return {'status': 'erro', 'motivo': str(exc_concil), 'numero': numero_nota}
 
             except Exception as exc:
                 if canhoto:
@@ -892,14 +882,14 @@ def reprocessar_canhoto(canhoto_id: int) -> dict:
             else:
                 canhoto_repo.atualizar(
                     canhoto,
-                    status_processamento=StatusProcessamento.REVISAO,
+                    status_processamento=StatusProcessamento.ERRO,
                     erro_mensagem='OCR e IA não conseguiram detectar o número da nota.',
                 )
                 return {
                     'sucesso': False,
                     'canhoto_id': canhoto_id,
                     'numero_nota': None,
-                    'mensagem': 'Número não detectado — enviado para revisão manual.',
+                    'mensagem': 'Número não detectado.',
                 }
 
         if confianca == 'BAIXA':
@@ -951,8 +941,8 @@ def reprocessar_canhoto(canhoto_id: int) -> dict:
             except (NotaFiscalNaoEncontradaException, ConciliacaoException) as exc:
                 canhoto_repo.atualizar(
                     canhoto,
-                    status_processamento=StatusProcessamento.REVISAO,
-                    erro_mensagem=f'NF {numero_nota} não encontrada no sistema.',
+                    status_processamento=StatusProcessamento.ERRO,
+                    erro_mensagem=str(exc),
                 )
                 return {
                     'sucesso': False,
