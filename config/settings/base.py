@@ -86,6 +86,8 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'apps.canhotos.context_processors.revisao_pendente_count',
+                'apps.canhotos.context_processors.erro_count',
+                'apps.canhotos.context_processors.processando_count',
             ],
         },
     },

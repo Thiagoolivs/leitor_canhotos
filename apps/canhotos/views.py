@@ -307,12 +307,11 @@ class AtribuirNotasDivisoriaView(View):
 
 class RevisaoListView(View):
     """
-    Dedicated "Revisão" tab: groups divider-sheet canhotos by review state so
-    operators can find pending validations without digging through filters.
+    Dedicated "Revisão" tab with three sub-tabs:
 
-    - aguardando: tipo_pagina divisória with status_processamento REVISAO.
-    - revisados: tipo_pagina divisória already resolved (status SUCESSO),
-      i.e. all detected numbers were attributed to notas.
+    1. Canhotos individuais em REVISAO (não-divisória).
+    2. Divisórias aguardando revisão (REVISAO).
+    3. Divisórias já revisadas (SUCESSO).
     """
     http_method_names = ['get']
 
@@ -320,19 +319,81 @@ class RevisaoListView(View):
         from django.shortcuts import render
         from apps.canhotos.models import TipoPagina
 
-        base = Canhoto.objects.filter(
+        canhotos_revisao = (
+            Canhoto.objects
+            .filter(status_processamento=StatusProcessamento.REVISAO)
+            .exclude(tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA])
+            .select_related('nota')
+            .order_by('-updated_at')
+        )
+
+        base_divisorias = Canhoto.objects.filter(
             tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA],
         ).select_related().order_by('-updated_at')
 
-        aguardando = base.filter(status_processamento=StatusProcessamento.REVISAO)
-        revisados = base.filter(status_processamento=StatusProcessamento.SUCESSO)
+        aguardando = base_divisorias.filter(status_processamento=StatusProcessamento.REVISAO)
+        revisados = base_divisorias.filter(status_processamento=StatusProcessamento.SUCESSO)
 
         return render(request, 'canhotos/revisao.html', {
+            'canhotos_revisao': canhotos_revisao,
+            'total_canhotos_revisao': canhotos_revisao.count(),
             'aguardando': aguardando,
             'revisados': revisados,
             'total_aguardando': aguardando.count(),
             'total_revisados': revisados.count(),
         })
+
+
+class ErroListView(ListView):
+    """Paginated list of canhotos with ERRO status."""
+    model = Canhoto
+    template_name = 'canhotos/erros.html'
+    context_object_name = 'canhotos'
+    paginate_by = 20
+
+    def get_queryset(self):
+        return (
+            Canhoto.objects
+            .filter(status_processamento=StatusProcessamento.ERRO)
+            .select_related('nota')
+            .order_by('-updated_at')
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['total_count'] = self.get_queryset().count()
+        return context
+
+
+class ProcessandoListView(ListView):
+    """Paginated list of canhotos being processed (PENDENTE/PROCESSANDO)."""
+    model = Canhoto
+    template_name = 'canhotos/processando.html'
+    context_object_name = 'canhotos'
+    paginate_by = 20
+
+    def get_queryset(self):
+        return (
+            Canhoto.objects
+            .filter(status_processamento__in=[
+                StatusProcessamento.PENDENTE,
+                StatusProcessamento.PROCESSANDO,
+            ])
+            .select_related('nota')
+            .order_by('-created_at')
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        qs = self.get_queryset()
+        context['total_count'] = qs.count()
+        context['total_pendente'] = qs.filter(
+            status_processamento=StatusProcessamento.PENDENTE,
+        ).count()
+        context['total_processando'] = qs.filter(
+            status_processamento=StatusProcessamento.PROCESSANDO,
+        ).count()
+        return context
 
 
 class CorrigirNumeroView(View):

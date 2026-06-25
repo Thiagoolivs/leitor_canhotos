@@ -8,30 +8,109 @@
 <div class="row mb-3 align-items-center">
   <div class="col">
     <h2 class="mb-0"><i class="bi bi-eye me-2"></i>Revisão Manual</h2>
-    <small class="text-muted">Folhas divisórias que precisam (ou precisaram) de validação manual</small>
+    <small class="text-muted">Canhotos e divisórias que precisam de validação manual</small>
   </div>
 </div>
 
 <ul class="nav nav-tabs mb-3" id="revisao-tabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="tab-aguardando-btn" data-bs-toggle="tab" data-bs-target="#tab-aguardando"
+    <button class="nav-link active" id="tab-canhotos-btn" data-bs-toggle="tab" data-bs-target="#tab-canhotos"
+            type="button" role="tab">
+      <i class="bi bi-file-earmark me-1 text-info"></i>
+      Canhotos Individuais <span class="badge bg-info text-dark ms-1">{{ total_canhotos_revisao }}</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-aguardando-btn" data-bs-toggle="tab" data-bs-target="#tab-aguardando"
             type="button" role="tab">
       <i class="bi bi-exclamation-triangle me-1 text-warning"></i>
-      Aguardando Revisão <span class="badge bg-warning text-dark ms-1">{{ total_aguardando }}</span>
+      Divisórias Aguardando <span class="badge bg-warning text-dark ms-1">{{ total_aguardando }}</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="tab-revisados-btn" data-bs-toggle="tab" data-bs-target="#tab-revisados"
             type="button" role="tab">
       <i class="bi bi-check-circle me-1 text-success"></i>
-      Revisados <span class="badge bg-success ms-1">{{ total_revisados }}</span>
+      Divisórias Revisadas <span class="badge bg-success ms-1">{{ total_revisados }}</span>
     </button>
   </li>
 </ul>
 
 <div class="tab-content">
-  <!-- Aguardando Revisão -->
-  <div class="tab-pane fade show active" id="tab-aguardando" role="tabpanel">
+  <!-- Canhotos Individuais em Revisão -->
+  <div class="tab-pane fade show active" id="tab-canhotos" role="tabpanel">
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        {% if canhotos_revisao %}
+        <div class="table-responsive">
+          <table class="table table-hover table-striped mb-0 align-middle">
+            <thead class="table-dark">
+              <tr>
+                <th>#</th>
+                <th>Arquivo</th>
+                <th>Número Detectado</th>
+                <th>Confiança</th>
+                <th>Erro / Motivo</th>
+                <th>Atualizado em</th>
+                <th class="text-center">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for canhoto in canhotos_revisao %}
+              <tr>
+                <td>{{ canhoto.pk }}</td>
+                <td>
+                  {% if canhoto.arquivo %}
+                    <a href="{% url 'canhotos:arquivo' canhoto.pk %}" target="_blank"
+                       class="text-truncate d-inline-block" style="max-width:180px;" title="{{ canhoto.nome_arquivo }}">
+                      <i class="bi bi-file-earmark me-1"></i>{{ canhoto.nome_arquivo }}
+                    </a>
+                  {% else %}
+                    <span class="text-muted">Sem arquivo</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {{ canhoto.numero_detectado|default:"—" }}
+                </td>
+                <td>
+                  {% if canhoto.confianca_deteccao == "ALTA" %}
+                    <span class="badge bg-success">Alta</span>
+                  {% elif canhoto.confianca_deteccao == "MEDIA" %}
+                    <span class="badge bg-warning text-dark">Média</span>
+                  {% elif canhoto.confianca_deteccao == "BAIXA" %}
+                    <span class="badge bg-danger">Baixa</span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">
+                  <span class="text-truncate d-inline-block" style="max-width:250px;" title="{{ canhoto.erro_mensagem }}">
+                    {{ canhoto.erro_mensagem|truncatechars:80|default:"—" }}
+                  </span>
+                </td>
+                <td class="small text-muted">{{ canhoto.updated_at|date:"d/m/Y H:i" }}</td>
+                <td class="text-center">
+                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-warning" title="Revisar agora">
+                    <i class="bi bi-pencil-square me-1"></i>Revisar
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-check2-circle display-4"></i>
+          <p class="mt-2">Nenhum canhoto individual aguardando revisão. Tudo em dia!</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Divisórias Aguardando Revisão -->
+  <div class="tab-pane fade" id="tab-aguardando" role="tabpanel">
     <div class="card shadow-sm">
       <div class="card-body p-0">
         {% if aguardando %}
@@ -85,14 +164,14 @@
         {% else %}
         <div class="text-center py-5 text-muted">
           <i class="bi bi-check2-circle display-4"></i>
-          <p class="mt-2">Nenhum canhoto aguardando revisão. Tudo em dia!</p>
+          <p class="mt-2">Nenhuma divisória aguardando revisão. Tudo em dia!</p>
         </div>
         {% endif %}
       </div>
     </div>
   </div>
 
-  <!-- Revisados -->
+  <!-- Divisórias Revisadas -->
   <div class="tab-pane fade" id="tab-revisados" role="tabpanel">
     <div class="card shadow-sm">
       <div class="card-body p-0">

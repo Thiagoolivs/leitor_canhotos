@@ -60,6 +60,24 @@
             {% endif %}
           </a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link {% block nav_erros %}{% endblock %}"
+             href="{% url 'canhotos:erros' %}">
+            <i class="bi bi-exclamation-triangle me-1"></i>Erros
+            {% if erro_count %}
+              <span class="badge bg-danger ms-1">{{ erro_count }}</span>
+            {% endif %}
+          </a>
+        </li>
+        {% if processando_count %}
+        <li class="nav-item">
+          <a class="nav-link {% block nav_processando %}{% endblock %}"
+             href="{% url 'canhotos:processando' %}">
+            <i class="bi bi-arrow-repeat me-1"></i>Processando
+            <span class="badge bg-primary ms-1">{{ processando_count }}</span>
+          </a>
+        </li>
+        {% endif %}
       </ul>
       <ul class="navbar-nav ms-auto">
         <li class="nav-item">
