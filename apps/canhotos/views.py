@@ -8,37 +8,76 @@ Uses class-based views throughout.
 - VincularManualView: POST only, manually links canhoto to a nota fiscal
 """
 import logging
+import mimetypes
+import os
 
 from django.contrib import messages
+from django.db.models import Case, CharField, F, Func, IntegerField, Value, When
+from django.db.models.functions import Cast
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy, reverse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.generic import ListView, DetailView
 
-from apps.canhotos.forms import CanhotoFilterSet, VincularManualForm
+from apps.canhotos.forms import CanhotoFilterSet, CorrigirNumeroForm, VincularManualForm
 from apps.canhotos.models import Canhoto, StatusProcessamento
+from core.mixins import PersistedFilterMixin
 
 logger = logging.getLogger(__name__)
 
 
-class CanhotoListView(ListView):
+class CanhotoListView(PersistedFilterMixin, ListView):
     """
     Paginated list of all canhotos with status and filtering support.
+    Filters persist across navigation via session (see PersistedFilterMixin).
     """
     model = Canhoto
     template_name = 'canhotos/lista.html'
     context_object_name = 'canhotos'
     paginate_by = 20
+    session_key = 'canhotos_filtros'
+
+    @staticmethod
+    def construir_filterset_e_queryset(querydict):
+        """
+        Builds the CanhotoFilterSet and the resulting filtered+ordered queryset
+        for a given querydict. Shared with CanhotoDetailView so "anterior/
+        próximo" navigation follows the same filters and order the user was
+        browsing with.
+        """
+        numero_limpo = Func(
+            F('numero_detectado'), Value(r'\D'), Value(''), Value('g'),
+            function='regexp_replace', output_field=CharField(),
+        )
+        queryset = Canhoto.objects.annotate(
+            numero_limpo=numero_limpo,
+        ).annotate(
+            numero_int=Case(
+                When(numero_limpo='', then=Value(None)),
+                default=Cast('numero_limpo', IntegerField()),
+                output_field=IntegerField(),
+            ),
+        ).select_related('nota')
+        filterset = CanhotoFilterSet(querydict, queryset=queryset)
+        ordem = querydict.get('ordem', 'desc')
+        if ordem == 'asc':
+            qs_ordenado = filterset.qs.order_by(F('numero_int').asc(nulls_last=True))
+        else:
+            qs_ordenado = filterset.qs.order_by(F('numero_int').desc(nulls_last=True))
+        return filterset, qs_ordenado
 
     def get_queryset(self):
-        queryset = Canhoto.objects.all().select_related('nota')
-        self.filterset = CanhotoFilterSet(self.request.GET, queryset=queryset)
-        return self.filterset.qs
+        self.filterset, qs_ordenado = self.construir_filterset_e_queryset(self.request.GET)
+        return qs_ordenado
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['filterset'] = self.filterset
         context['total_count'] = self.filterset.qs.count()
+        context['ordem'] = self.request.GET.get('ordem', 'desc')
         return context
 
 
@@ -56,7 +95,71 @@ class CanhotoDetailView(DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['vincular_form'] = VincularManualForm()
+        context['corrigir_form'] = CorrigirNumeroForm(initial={
+            'numero_detectado': self.object.numero_detectado,
+        })
+        context['prev_id'], context['next_id'] = self._vizinhos()
         return context
+
+    def _vizinhos(self):
+        """
+        Finds the previous/next canhoto IDs using the same filters/order the
+        user had active on the list page (persisted in session), so
+        "Anterior"/"Próximo" continue browsing the same filtered set.
+        """
+        from django.http import QueryDict
+        querystring = self.request.session.get('canhotos_filtros', '')
+        querydict = QueryDict(querystring)
+        _, qs_ordenado = CanhotoListView.construir_filterset_e_queryset(querydict)
+        ids = list(qs_ordenado.values_list('pk', flat=True))
+        try:
+            indice = ids.index(self.object.pk)
+        except ValueError:
+            return None, None
+        anterior = ids[indice - 1] if indice > 0 else None
+        proximo = ids[indice + 1] if indice < len(ids) - 1 else None
+        return anterior, proximo
+
+
+@method_decorator(xframe_options_sameorigin, name='get')
+class ServirArquivoCanhotoView(View):
+    """
+    Serve o arquivo físico do canhoto independente de onde ele esteja no disco.
+    Necessário porque os arquivos podem estar em pastas do scanner fora do MEDIA_ROOT.
+
+    O decorator xframe_options_sameorigin sobrescreve o X-Frame-Options: DENY
+    global apenas neste endpoint, permitindo que o <iframe> de pré-visualização
+    (mesma origem) renderize o PDF.
+    """
+    http_method_names = ['get']
+
+    def get(self, request, pk):
+        from django.conf import settings
+        from pathlib import Path
+
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        if not canhoto.arquivo:
+            raise Http404('Arquivo não associado a este canhoto.')
+
+        # Resolve o caminho absoluto
+        caminho = Path(str(canhoto.arquivo.name))
+        if not caminho.is_absolute():
+            caminho = Path(settings.MEDIA_ROOT) / caminho
+
+        if not caminho.exists():
+            raise Http404(f'Arquivo não encontrado em disco: {caminho}')
+
+        content_type, _ = mimetypes.guess_type(str(caminho))
+        content_type = content_type or 'application/octet-stream'
+
+        response = FileResponse(
+            open(caminho, 'rb'),
+            content_type=content_type,
+            as_attachment=False,
+        )
+        # Força exibição inline no browser (não download)
+        response['Content-Disposition'] = f'inline; filename="{caminho.name}"'
+        return response
 
 
 class ReprocessarOCRView(View):
@@ -70,7 +173,9 @@ class ReprocessarOCRView(View):
         canhoto = get_object_or_404(Canhoto, pk=pk)
         from tasks.ocr_tasks import reprocessar_canhoto
         try:
-            reprocessar_canhoto.delay(canhoto.id)
+            # Roteado para a fila 'prioridade' para furar a fila de processamento
+            # automático (notas/canhotos) — ação manual do usuário deve ser rápida.
+            reprocessar_canhoto.apply_async(args=[canhoto.id], queue='prioridade')
             canhoto.status_processamento = StatusProcessamento.PENDENTE
             canhoto.erro_mensagem = ''
             canhoto.save(update_fields=['status_processamento', 'erro_mensagem', 'updated_at'])
@@ -113,4 +218,249 @@ class VincularManualView(View):
             for field, errs in form.errors.items():
                 for err in errs:
                     messages.error(request, f'{field}: {err}')
+        return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+
+class ExcluirCanhotoView(View):
+    """
+    POST-only view that deletes a canhoto record and its physical file.
+    If the canhoto is linked to a nota, the nota's status is reverted to
+    AGUARDANDO_CANHOTO so it can be matched again later.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        canhoto_id = canhoto.id
+
+        nota = canhoto.nota
+        if nota is not None:
+            from apps.notas.models import StatusNota
+            nota.status = StatusNota.AGUARDANDO_CANHOTO
+            nota.save(update_fields=['status', 'updated_at'])
+
+        if canhoto.arquivo:
+            try:
+                from django.conf import settings
+                from pathlib import Path
+                caminho = Path(str(canhoto.arquivo.name))
+                if not caminho.is_absolute():
+                    caminho = Path(settings.MEDIA_ROOT) / caminho
+                if caminho.exists():
+                    caminho.unlink()
+            except Exception as exc:
+                logger.warning('Falha ao remover arquivo físico do canhoto %s: %s', canhoto_id, exc)
+
+        canhoto.delete()
+        messages.success(request, f'Canhoto {canhoto_id} excluído com sucesso.')
+        logger.info('Canhoto excluído: canhoto_id=%s', canhoto_id)
+        return redirect(reverse('canhotos:lista'))
+
+
+class AtribuirNotasDivisoriaView(View):
+    """
+    POST-only view for folha-divisória canhotos: attributes one or more
+    Notas Fiscais (by número) to this single canhoto record, since a divider
+    sheet legitimately covers many notas at once.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        numeros = request.POST.getlist('numeros')
+        # Campo de texto livre: números adicionais separados por vírgula.
+        numeros_texto = request.POST.get('numeros_texto', '')
+        numeros += [n.strip() for n in numeros_texto.split(',') if n.strip()]
+        # Remove duplicados preservando ordem
+        numeros = list(dict.fromkeys(numeros))
+        if not numeros:
+            messages.warning(request, 'Selecione ou digite ao menos um número para atribuir a este canhoto.')
+            return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+        from services.conciliacao_service import ConciliacaoService
+        try:
+            service = ConciliacaoService()
+            resultado = service.vincular_divisoria(canhoto.id, numeros)
+            if resultado['vinculadas']:
+                messages.success(
+                    request,
+                    f"Notas Fiscais atribuídas a este canhoto: {', '.join(resultado['vinculadas'])}.",
+                )
+            if resultado['nao_encontradas']:
+                messages.warning(
+                    request,
+                    f"Nenhuma Nota Fiscal encontrada para: {', '.join(resultado['nao_encontradas'])}.",
+                )
+            if resultado['ja_finalizadas']:
+                messages.warning(
+                    request,
+                    f"Já finalizadas por outro canhoto (ignoradas): {', '.join(resultado['ja_finalizadas'])}.",
+                )
+            if resultado['revisao_concluida']:
+                messages.success(request, f'Revisão do canhoto {canhoto.id} concluída — todas as notas foram atribuídas.')
+            logger.info('Notas atribuídas a divisória: canhoto_id=%s numeros=%s', canhoto.id, numeros)
+        except Exception as exc:
+            messages.error(request, f'Erro ao atribuir notas: {exc}')
+            logger.exception('Erro ao atribuir notas à divisória %s', pk)
+        return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+
+class RevisaoListView(View):
+    """
+    Dedicated "Revisão" tab with three sub-tabs:
+
+    1. Canhotos individuais em REVISAO (não-divisória).
+    2. Divisórias aguardando revisão (REVISAO).
+    3. Divisórias já revisadas (SUCESSO).
+    """
+    http_method_names = ['get']
+
+    def get(self, request):
+        from django.shortcuts import render
+        from apps.canhotos.models import TipoPagina
+
+        canhotos_revisao = (
+            Canhoto.objects
+            .filter(status_processamento=StatusProcessamento.REVISAO)
+            .exclude(tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA])
+            .select_related('nota')
+            .order_by('-updated_at')
+        )
+
+        base_divisorias = Canhoto.objects.filter(
+            tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA],
+        ).select_related().order_by('-updated_at')
+
+        aguardando = base_divisorias.filter(status_processamento=StatusProcessamento.REVISAO)
+        revisados = base_divisorias.filter(status_processamento=StatusProcessamento.SUCESSO)
+
+        return render(request, 'canhotos/revisao.html', {
+            'canhotos_revisao': canhotos_revisao,
+            'total_canhotos_revisao': canhotos_revisao.count(),
+            'aguardando': aguardando,
+            'revisados': revisados,
+            'total_aguardando': aguardando.count(),
+            'total_revisados': revisados.count(),
+        })
+
+
+class ErroListView(ListView):
+    """Paginated list of canhotos with ERRO status."""
+    model = Canhoto
+    template_name = 'canhotos/erros.html'
+    context_object_name = 'canhotos'
+    paginate_by = 20
+
+    def get_queryset(self):
+        return (
+            Canhoto.objects
+            .filter(status_processamento=StatusProcessamento.ERRO)
+            .select_related('nota')
+            .order_by('-updated_at')
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['total_count'] = self.get_queryset().count()
+        return context
+
+
+class ProcessandoListView(ListView):
+    """Paginated list of canhotos being processed (PENDENTE/PROCESSANDO)."""
+    model = Canhoto
+    template_name = 'canhotos/processando.html'
+    context_object_name = 'canhotos'
+    paginate_by = 20
+
+    def get_queryset(self):
+        return (
+            Canhoto.objects
+            .filter(status_processamento__in=[
+                StatusProcessamento.PENDENTE,
+                StatusProcessamento.PROCESSANDO,
+            ])
+            .select_related('nota')
+            .order_by('-created_at')
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        qs = self.get_queryset()
+        context['total_count'] = qs.count()
+        context['total_pendente'] = qs.filter(
+            status_processamento=StatusProcessamento.PENDENTE,
+        ).count()
+        context['total_processando'] = qs.filter(
+            status_processamento=StatusProcessamento.PROCESSANDO,
+        ).count()
+        return context
+
+
+class CorrigirNumeroView(View):
+    """
+    POST-only view: operator corrects/validates the NF number on a canhoto.
+    After saving, immediately attempts automatic conciliation. On success, the
+    canhoto moves to SUCESSO and exits REVISAO/ERRO. On failure (nota not found),
+    it stays in REVISAO so the operator can try VincularManualView instead.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        form = CorrigirNumeroForm(request.POST)
+        if not form.is_valid():
+            for field, errs in form.errors.items():
+                for err in errs:
+                    messages.error(request, f'{field}: {err}')
+            return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+        numeros = form.numeros_list
+
+        if len(numeros) > 1:
+            from apps.canhotos.models import TipoPagina
+            canhoto.tipo_pagina = TipoPagina.DIVISORIA
+            canhoto.numeros_lista = ', '.join(numeros)
+            canhoto.numero_detectado = ''
+            canhoto.confianca_deteccao = 'ALTA'
+            canhoto.status_processamento = StatusProcessamento.REVISAO
+            canhoto.erro_mensagem = ''
+            canhoto.save(update_fields=[
+                'tipo_pagina', 'numeros_lista', 'numero_detectado',
+                'confianca_deteccao', 'status_processamento', 'erro_mensagem', 'updated_at',
+            ])
+            messages.success(
+                request,
+                f'Canhoto {canhoto.id} convertido em divisória com {len(numeros)} números. '
+                'Selecione abaixo quais notas ele atende.',
+            )
+            logger.info('Canhoto %s definido como divisória manual: %s', canhoto.id, numeros)
+            return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+        numero = numeros[0]
+        canhoto.numero_detectado = numero
+        canhoto.confianca_deteccao = 'ALTA'
+        canhoto.erro_mensagem = ''
+        canhoto.save(update_fields=['numero_detectado', 'confianca_deteccao', 'erro_mensagem', 'updated_at'])
+        logger.info('Número corrigido manualmente: canhoto_id=%s numero=%s', canhoto.id, numero)
+
+        # Tenta conciliação automática agora que o número foi validado pelo operador.
+        from services.conciliacao_service import ConciliacaoService
+        try:
+            ConciliacaoService().conciliar(canhoto.id, numero)
+            messages.success(
+                request,
+                f'Canhoto {canhoto.id} vinculado com sucesso à NF {numero}!',
+            )
+            logger.info('Conciliação manual bem-sucedida: canhoto_id=%s nf=%s', canhoto.id, numero)
+        except Exception as exc:
+            canhoto.status_processamento = StatusProcessamento.REVISAO
+            canhoto.erro_mensagem = f'Número {numero} salvo, mas não foi encontrado no sistema: {exc}'
+            canhoto.save(update_fields=['status_processamento', 'erro_mensagem', 'updated_at'])
+            messages.warning(
+                request,
+                f'Número {numero} salvo, mas a NF não foi encontrada no sistema. '
+                'Use "Vincular Manualmente" para selecionar a nota correta.',
+            )
+            logger.warning('Conciliação após correção falhou: canhoto_id=%s nf=%s erro=%s', canhoto.id, numero, exc)
+
         return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))

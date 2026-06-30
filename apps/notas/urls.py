@@ -15,6 +15,7 @@ urlpatterns = [
     path('<int:pk>/', views.NotaFiscalDetailView.as_view(), name='detalhe'),
     path('<int:pk>/editar/', views.NotaFiscalUpdateView.as_view(), name='editar'),
     path('api/status-counts/', views.StatusCountsView.as_view(), name='status_counts'),
+    path('api/buscar/', views.BuscarNotaAPIView.as_view(), name='buscar_api'),
     path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
     path('api/dashboard/', views.DashboardAPIView.as_view(), name='dashboard_api'),
 ]

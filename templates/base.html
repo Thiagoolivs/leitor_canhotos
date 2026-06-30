@@ -4,12 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Leitor de Canhotos{% endblock %}</title>
-  <!-- Bootstrap 5 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
         rel="stylesheet"
         integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
         crossorigin="anonymous">
-  <!-- Bootstrap Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
         rel="stylesheet">
   {% load static %}
@@ -19,42 +17,77 @@
 <body class="bg-light">
 
 <!-- ===== NAVBAR ===== -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
-  <div class="container-fluid">
-    <a class="navbar-brand fw-bold" href="/">
-      <i class="bi bi-file-earmark-check-fill me-2"></i>Leitor de Canhotos
+<nav class="navbar navbar-expand-lg navbar-dark navbar-custom sticky-top">
+  <div class="container-fluid px-3">
+    <a class="navbar-brand fw-bold d-flex align-items-center" href="{% url 'notas:dashboard' %}">
+      <span class="brand-icon me-2"><i class="bi bi-file-earmark-check-fill"></i></span>
+      Leitor de Canhotos
     </a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+    <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse"
             data-bs-target="#navbarMain" aria-controls="navbarMain"
-            aria-expanded="false" aria-label="Toggle navigation">
+            aria-expanded="false" aria-label="Menu">
       <span class="navbar-toggler-icon"></span>
     </button>
 
     <div class="collapse navbar-collapse" id="navbarMain">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+
         <li class="nav-item">
           <a class="nav-link {% block nav_dashboard %}{% endblock %}"
-             href="{% url 'notas:dashboard' %}">
-            <i class="bi bi-speedometer2 me-1"></i>Dashboard
+             href="{% url 'notas:dashboard' %}" title="Visão geral do sistema">
+            <i class="bi bi-speedometer2 me-1"></i>Início
           </a>
         </li>
+
         <li class="nav-item">
           <a class="nav-link {% block nav_notas %}{% endblock %}"
-             href="{% url 'notas:lista' %}">
+             href="{% url 'notas:lista' %}" title="Notas fiscais cadastradas">
             <i class="bi bi-receipt me-1"></i>Notas Fiscais
           </a>
         </li>
+
         <li class="nav-item">
           <a class="nav-link {% block nav_canhotos %}{% endblock %}"
-             href="{% url 'canhotos:lista' %}">
+             href="{% url 'canhotos:lista' %}" title="Todos os canhotos escaneados">
             <i class="bi bi-file-earmark-pdf me-1"></i>Canhotos
           </a>
         </li>
+
+        <li class="nav-item">
+          <a class="nav-link {% block nav_revisao %}{% endblock %}"
+             href="{% url 'canhotos:revisao' %}" title="Canhotos que precisam de validação manual">
+            <i class="bi bi-eye me-1"></i>Revisar
+            {% if revisao_pendente_count %}
+              <span class="badge bg-warning text-dark ms-1">{{ revisao_pendente_count }}</span>
+            {% endif %}
+          </a>
+        </li>
+
+        {% if erro_count %}
+        <li class="nav-item">
+          <a class="nav-link {% block nav_erros %}{% endblock %}"
+             href="{% url 'canhotos:erros' %}" title="Canhotos com falha no processamento">
+            <i class="bi bi-exclamation-triangle me-1"></i>Erros
+            <span class="badge bg-danger ms-1">{{ erro_count }}</span>
+          </a>
+        </li>
+        {% endif %}
+
+        {% if processando_count %}
+        <li class="nav-item">
+          <a class="nav-link {% block nav_processando %}{% endblock %}"
+             href="{% url 'canhotos:processando' %}" title="Canhotos em fila de processamento">
+            <i class="bi bi-arrow-repeat me-1"></i>
+            <span class="badge bg-primary ms-0">{{ processando_count }}</span>
+          </a>
+        </li>
+        {% endif %}
+
       </ul>
       <ul class="navbar-nav ms-auto">
         <li class="nav-item">
-          <a class="nav-link" href="/admin/" target="_blank">
-            <i class="bi bi-gear-fill me-1"></i>Admin
+          <a class="nav-link opacity-75" href="/admin/" target="_blank" title="Painel administrativo">
+            <i class="bi bi-gear me-1"></i><span class="d-none d-xl-inline">Admin</span>
           </a>
         </li>
       </ul>
@@ -63,14 +96,18 @@
 </nav>
 
 <!-- ===== MAIN CONTENT ===== -->
-<main class="container-fluid py-4">
+<main class="container-fluid py-4 px-3 px-md-4">
 
-  <!-- Django Messages -->
+  <!-- Django Messages — auto-dismiss after 5s -->
   {% if messages %}
-    <div class="row">
+    <div class="row mb-3">
       <div class="col-12">
         {% for message in messages %}
-          <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+          <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show alert-auto-dismiss" role="alert">
+            {% if message.tags == 'success' %}<i class="bi bi-check-circle-fill me-2"></i>
+            {% elif message.tags == 'error' or message.tags == 'danger' %}<i class="bi bi-x-circle-fill me-2"></i>
+            {% elif message.tags == 'warning' %}<i class="bi bi-exclamation-triangle-fill me-2"></i>
+            {% else %}<i class="bi bi-info-circle-fill me-2"></i>{% endif %}
             {{ message }}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
           </div>
@@ -86,14 +123,78 @@
 <!-- ===== FOOTER ===== -->
 <footer class="footer mt-auto py-3 bg-white border-top">
   <div class="container-fluid text-center text-muted small">
-    <span>Leitor de Canhotos &mdash; Sistema de Conciliação de Notas Fiscais</span>
+    Leitor de Canhotos &mdash; Sistema de Conciliação de Notas Fiscais
   </div>
 </footer>
+
+<!-- ===== MODAL DE CONFIRMAÇÃO GLOBAL ===== -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmModalLabel">Confirmar ação</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="confirmModalBody">
+        Tem certeza que deseja continuar?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-lg me-1"></i>Cancelar
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmModalBtn">
+          <i class="bi bi-check-lg me-1"></i>Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
         crossorigin="anonymous"></script>
+
+<script>
+// Auto-dismiss alerts after 5 seconds
+document.querySelectorAll('.alert-auto-dismiss').forEach(function(el) {
+  setTimeout(function() {
+    var bsAlert = bootstrap.Alert.getOrCreateInstance(el);
+    if (bsAlert) bsAlert.close();
+  }, 5000);
+});
+
+// Global confirm modal — replaces browser confirm()
+// Usage: <button data-confirm="Mensagem?" data-form="formId" ...>
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-confirm]');
+  if (!btn) return;
+  e.preventDefault();
+  var msg = btn.getAttribute('data-confirm');
+  var formId = btn.getAttribute('data-form');
+  var danger = btn.getAttribute('data-confirm-danger') !== 'false';
+  var label = btn.getAttribute('data-confirm-label') || 'Confirmar';
+
+  document.getElementById('confirmModalBody').textContent = msg;
+  var confirmBtn = document.getElementById('confirmModalBtn');
+  confirmBtn.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+  confirmBtn.innerHTML = '<i class="bi bi-check-lg me-1"></i>' + label;
+
+  confirmBtn.onclick = function() {
+    if (formId) {
+      document.getElementById(formId).submit();
+    } else if (btn.form) {
+      btn.form.submit();
+    } else if (btn.tagName === 'A') {
+      window.location.href = btn.href;
+    }
+    bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
+  };
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal')).show();
+});
+</script>
+
 {% block extra_scripts %}{% endblock %}
 {% block extra_js %}{% endblock %}
 </body>

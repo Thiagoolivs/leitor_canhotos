@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Processando - Leitor de Canhotos{% endblock %}
+{% block nav_processando %}active{% endblock %}
+
+{% block content %}
+<div class="row mb-3 align-items-center">
+  <div class="col">
+    <h2 class="mb-0"><i class="bi bi-arrow-repeat me-2 text-primary"></i>Em Processamento</h2>
+    <small class="text-muted">
+      {{ total_count }} canhoto(s) na fila
+      ({{ total_pendente }} pendente(s), {{ total_processando }} processando)
+    </small>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    {% if canhotos %}
+    <div class="table-responsive">
+      <table class="table table-hover table-striped mb-0 align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>#</th>
+            <th>Arquivo</th>
+            <th>Status</th>
+            <th>Criado em</th>
+            <th>Atualizado em</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for canhoto in canhotos %}
+          <tr>
+            <td>{{ canhoto.pk }}</td>
+            <td>
+              {% if canhoto.arquivo %}
+                <span class="text-truncate d-inline-block" style="max-width:250px;" title="{{ canhoto.nome_arquivo }}">
+                  <i class="bi bi-file-earmark me-1"></i>{{ canhoto.nome_arquivo }}
+                </span>
+              {% else %}
+                <span class="text-muted">Sem arquivo</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if canhoto.status_processamento == "PROCESSANDO" %}
+                <span class="badge bg-primary"><i class="bi bi-arrow-repeat me-1"></i>Processando</span>
+              {% else %}
+                <span class="badge bg-secondary">Pendente</span>
+              {% endif %}
+            </td>
+            <td class="small text-muted">{{ canhoto.created_at|date:"d/m/Y H:i" }}</td>
+            <td class="small text-muted">{{ canhoto.updated_at|date:"d/m/Y H:i" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-check2-circle display-4"></i>
+      <p class="mt-2">Nenhum canhoto na fila de processamento.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if page_obj.has_other_pages %}
+<nav class="mt-3" aria-label="Paginação">
+  <ul class="pagination justify-content-center">
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?page=1">
+          <i class="bi bi-chevron-double-left"></i>
+        </a>
+      </li>
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+      </li>
+    {% endif %}
+
+    {% for num in page_obj.paginator.page_range %}
+      {% if page_obj.number == num %}
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+      {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+        </li>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </li>
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">
+          <i class="bi bi-chevron-double-right"></i>
+        </a>
+      </li>
+    {% endif %}
+  </ul>
+  <p class="text-center text-muted small">
+    Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+    &mdash; {{ page_obj.paginator.count }} registro(s) no total
+  </p>
+</nav>
+{% endif %}
+{% endblock %}

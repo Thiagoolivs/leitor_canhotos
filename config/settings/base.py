@@ -85,6 +85,9 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'apps.canhotos.context_processors.revisao_pendente_count',
+                'apps.canhotos.context_processors.erro_count',
+                'apps.canhotos.context_processors.processando_count',
             ],
         },
     },
@@ -146,6 +149,20 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_ACKS_LATE = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
+
+# Filas separadas: a ordem na flag -Q define a prioridade de consumo no Redis.
+# Iniciar o worker com:
+#   celery -A config.celery_app worker --pool=solo -Q prioridade,notas,canhotos,celery --loglevel=info
+# O worker consome 'prioridade' primeiro, depois 'notas', depois 'canhotos', e só
+# por fim a fila padrão 'celery'. Ações manuais do usuário (ex.: reprocessar OCR)
+# são roteadas para 'prioridade' para furar a fila de processamento automático.
+CELERY_TASK_QUEUES = {
+    'prioridade': {'exchange': 'prioridade', 'routing_key': 'prioridade'},
+    'notas': {'exchange': 'notas', 'routing_key': 'notas'},
+    'canhotos': {'exchange': 'canhotos', 'routing_key': 'canhotos'},
+    'celery': {'exchange': 'celery', 'routing_key': 'celery'},
+}
+CELERY_TASK_DEFAULT_QUEUE = 'celery'
 
 # ==============================================================================
 # PASSWORD VALIDATION
@@ -219,22 +236,67 @@ SCANNER_CANHOTO_DIRS = _parse_scanner_dirs(
 SCANNER_PROCESSED_DIR = config('SCANNER_PROCESSED_DIR', default='/processados')
 SCANNER_ERROR_DIR = config('SCANNER_ERROR_DIR', default='/erro')
 
+# Auto-vinculação: quando habilitado, canhotos com confiança ALTA são
+# automaticamente vinculados à nota fiscal correspondente sem revisão humana.
+# Canhotos com confiança BAIXA vão para REVISAO em vez de auto-vincular.
+AUTO_VINCULAR_ALTA_CONFIANCA = config('AUTO_VINCULAR_ALTA_CONFIANCA', default=True, cast=bool)
+
+# ==============================================================================
+# AI FALLBACK (Groq / Llama)
+# Quando o OCR retorna confiança BAIXA, o texto é enviado para a IA para
+# tentar extrair o número da nota fiscal antes de mandar para revisão manual.
+# ==============================================================================
+
+GROQ_API_KEY = config('GROQ_API_KEY', default='')
+GROQ_API_KEY_2 = config('GROQ_API_KEY_2', default='')
+GROQ_API_KEY_3 = config('GROQ_API_KEY_3', default='')
+GROQ_MODEL = config('GROQ_MODEL', default='llama-3.3-70b-versatile')
+AI_FALLBACK_HABILITADO = config('AI_FALLBACK_HABILITADO', default=True, cast=bool)
+
 # Tesseract executable path (overridable via env for Windows)
 import pytesseract as _pytesseract
 _tesseract_cmd = config('TESSERACT_CMD', default='tesseract')
 _pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd
 
-# Poppler path for pdf2image (needed on Windows)
-POPPLER_PATH = config('POPPLER_PATH', default=None) or None
+# Poppler path for pdf2image (needed on Windows).
+# On Windows, backslashes in .env values can be tricky; we normalise the path
+# and fall back to common install locations if the configured path does not exist.
+def _resolve_poppler_path() -> 'str | None':
+    import os as _os
+    raw = config('POPPLER_PATH', default='') or ''
+    # python-decouple reads .env literally, but backslash-escapes can mangle paths.
+    # Normalise separators just in case.
+    raw = raw.strip().replace('/', _os.sep).replace('\\', _os.sep)
+    if raw and Path(raw).is_dir():
+        return raw
+    # Auto-detect common Windows install locations
+    candidates = [
+        r'C:\poppler\bin',
+        r'C:\poppler\Library\bin',
+        r'C:\Program Files\poppler\bin',
+        r'C:\Program Files (x86)\poppler\bin',
+    ]
+    for candidate in candidates:
+        if Path(candidate).is_dir():
+            return candidate
+    # Let pdf2image search PATH (works on Linux/Docker where poppler is in PATH)
+    return None
+
+POPPLER_PATH = _resolve_poppler_path()
 
 # Regex patterns for extracting Brazilian invoice (Nota Fiscal) numbers from OCR text.
 # Ordered from most specific to least specific to minimize false positives.
 NOTA_NUMBER_PATTERNS = [
-    r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{1,6})',
-    r'N[Oo°\.º]\s*:?\s*(\d{1,6})',
-    r'NF\s*[-:]\s*(\d{1,6})',
-    r'N[ÚúUu]MERO\s*(?:DA\s+NOTA)?\s*:?\s*(\d{1,6})',
-    r'(?:^|\s)(\d{6})(?:\s|$)',
+    # "NOTA FISCAL ELETRÔNICA N. 000154108" ou "NOTA FISCAL Nº 154108"
+    r'NOTA\s+FISCAL\s+(?:ELETR[OÔ]NICA\s+)?N[Oo°\.º]?\s*:?\s*(\d{1,9})',
+    # "Nº NOTA FISCAL: 154108" (formato do certificado de conformidade)
+    r'N[Oo°\.º]\s+NOTA\s+FISCAL\s*:?\s*(\d{1,9})',
+    # "N. 000154108" ou "N° 154108"
+    r'N[Oo°\.º\.]\s*:?\s*(\d{1,9})',
+    # "NF-e" ou "NF:" seguido do numero
+    r'NF[-\s]*[Ee]?\s*:?\s*(\d{1,9})',
+    # Numero isolado de 6 a 9 digitos (fallback)
+    r'(?:^|\s)(\d{6,9})(?:\s|$)',
 ]
 
 # ==============================================================================
@@ -246,6 +308,29 @@ NOTA_NUMBER_PATTERNS = [
 # Ensure log directory exists before Django tries to open log files
 _LOGS_DIR = Path(config('LOGS_DIR', default=str(BASE_DIR / 'logs')))
 _LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _detectar_processo() -> str:
+    """
+    Identifica o papel do processo atual para que cada um escreva no seu
+    próprio arquivo de log. No Windows, RotatingFileHandler não consegue
+    rotacionar um arquivo aberto por outro processo (WinError 32), então
+    compartilhar o mesmo log entre runserver/celery/monitor causa erros.
+    """
+    import sys
+    argv = ' '.join(sys.argv).lower()
+    if 'scanner_monitor' in argv:
+        return 'monitor'
+    if 'celery' in argv:
+        return 'celery'
+    if 'runserver' in argv:
+        return 'web'
+    return 'app'
+
+
+_PROC = config('LOG_PROCESS_NAME', default=_detectar_processo())
+_LOG_FILE = os.path.join(str(_LOGS_DIR), f'leitor_canhotos.{_PROC}.log')
+_ERROR_LOG_FILE = os.path.join(str(_LOGS_DIR), f'errors.{_PROC}.log')
 
 LOGGING = {
     'version': 1,
@@ -266,18 +351,22 @@ LOGGING = {
         },
         'file': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(config('LOGS_DIR', default=str(BASE_DIR / 'logs')), 'leitor_canhotos.log'),
+            'filename': _LOG_FILE,
             'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'backupCount': 5,
             'formatter': 'structured',
+            'encoding': 'utf-8',
+            'delay': True,
         },
         'error_file': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(config('LOGS_DIR', default=str(BASE_DIR / 'logs')), 'errors.log'),
+            'filename': _ERROR_LOG_FILE,
             'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'backupCount': 5,
             'formatter': 'structured',
             'level': 'ERROR',
+            'encoding': 'utf-8',
+            'delay': True,
         },
     },
     'root': {

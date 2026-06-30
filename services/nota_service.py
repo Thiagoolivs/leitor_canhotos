@@ -164,19 +164,39 @@ class NotaService:
         )
         return nota_atualizada
 
-    def registrar_nota_escaneada(self, numero: str, arquivo_path: str) -> NotaFiscal:
+    def registrar_nota_escaneada(
+        self,
+        numero: str,
+        arquivo_path: str,
+        data_emissao=None,
+        destinatario: str = '',
+        valor_total=None,
+    ) -> NotaFiscal:
         """
         Register or update a NotaFiscal from a scanned invoice file.
-        If nota already exists, just log and return it (idempotent).
+        If nota already exists, updates extracted fields and returns it.
         """
         numero_formatado = formatar_numero_nota(numero)
         nota = self.nota_repo.buscar_por_numero(numero_formatado)
         if nota:
-            self.logger.info('NotaFiscal %s ja existe (id=%s), ignorando duplicata', numero_formatado, nota.id)
+            self.logger.info('NotaFiscal %s ja existe (id=%s), atualizando dados OCR', numero_formatado, nota.id)
+            campos = {}
+            if data_emissao and not nota.data_emissao:
+                campos['data_emissao'] = data_emissao
+            if destinatario and not nota.destinatario:
+                campos['destinatario'] = destinatario
+            if valor_total is not None and nota.valor_total is None:
+                campos['valor_total'] = valor_total
+            if campos:
+                for k, v in campos.items():
+                    setattr(nota, k, v)
+                nota.save(update_fields=list(campos.keys()) + ['updated_at'])
             return nota
         nota = self.nota_repo.criar(
             numero=numero_formatado,
-            data_emissao=date.today(),
+            data_emissao=data_emissao or date.today(),
+            destinatario=destinatario,
+            valor_total=valor_total,
             status=StatusNota.AGUARDANDO_CANHOTO,
         )
         self.logger.info('NotaFiscal criada automaticamente: numero=%s id=%s', numero_formatado, nota.id)
