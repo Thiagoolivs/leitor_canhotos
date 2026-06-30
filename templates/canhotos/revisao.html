@@ -1,76 +1,104 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Revisão - Leitor de Canhotos{% endblock %}
+{% block title %}Revisão Manual - Leitor de Canhotos{% endblock %}
 {% block nav_revisao %}active{% endblock %}
 
 {% block content %}
-<div class="row mb-3 align-items-center">
+<div class="row mb-4 align-items-center">
   <div class="col">
     <h2 class="mb-0"><i class="bi bi-eye me-2"></i>Revisão Manual</h2>
-    <small class="text-muted">Canhotos e divisórias que precisam de validação manual</small>
+    <small class="text-muted">Canhotos que o sistema não conseguiu identificar automaticamente</small>
   </div>
 </div>
 
+{% if total_canhotos_revisao == 0 and total_aguardando == 0 %}
+<div class="priority-banner priority-success d-flex align-items-center gap-3 mb-4">
+  <i class="bi bi-check-circle-fill text-success fs-4"></i>
+  <div>
+    <strong>Tudo em dia!</strong> Nenhum canhoto aguarda revisão no momento.
+  </div>
+</div>
+{% endif %}
+
 <ul class="nav nav-tabs mb-3" id="revisao-tabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="tab-canhotos-btn" data-bs-toggle="tab" data-bs-target="#tab-canhotos"
-            type="button" role="tab">
-      <i class="bi bi-file-earmark me-1 text-info"></i>
-      Canhotos Individuais <span class="badge bg-info text-dark ms-1">{{ total_canhotos_revisao }}</span>
+    <button class="nav-link active" id="tab-canhotos-btn" data-bs-toggle="tab" data-bs-target="#tab-canhotos" type="button" role="tab">
+      <i class="bi bi-file-earmark me-1"></i>
+      Canhotos Individuais
+      {% if total_canhotos_revisao > 0 %}
+        <span class="badge bg-warning text-dark ms-1">{{ total_canhotos_revisao }}</span>
+      {% else %}
+        <span class="badge bg-secondary ms-1">0</span>
+      {% endif %}
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="tab-aguardando-btn" data-bs-toggle="tab" data-bs-target="#tab-aguardando"
-            type="button" role="tab">
-      <i class="bi bi-exclamation-triangle me-1 text-warning"></i>
-      Divisórias Aguardando <span class="badge bg-warning text-dark ms-1">{{ total_aguardando }}</span>
+    <button class="nav-link" id="tab-aguardando-btn" data-bs-toggle="tab" data-bs-target="#tab-aguardando" type="button" role="tab">
+      <i class="bi bi-layout-text-window-reverse me-1"></i>
+      Folhas Divisórias
+      {% if total_aguardando > 0 %}
+        <span class="badge bg-warning text-dark ms-1">{{ total_aguardando }}</span>
+      {% else %}
+        <span class="badge bg-secondary ms-1">0</span>
+      {% endif %}
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="tab-revisados-btn" data-bs-toggle="tab" data-bs-target="#tab-revisados"
-            type="button" role="tab">
+    <button class="nav-link" id="tab-revisados-btn" data-bs-toggle="tab" data-bs-target="#tab-revisados" type="button" role="tab">
       <i class="bi bi-check-circle me-1 text-success"></i>
-      Divisórias Revisadas <span class="badge bg-success ms-1">{{ total_revisados }}</span>
+      Revisados
+      <span class="badge bg-success ms-1">{{ total_revisados }}</span>
     </button>
   </li>
 </ul>
 
 <div class="tab-content">
-  <!-- Canhotos Individuais em Revisão -->
+
+  <!-- TAB 1: Canhotos Individuais -->
   <div class="tab-pane fade show active" id="tab-canhotos" role="tabpanel">
+    {% if canhotos_revisao %}
+    <div class="alert alert-info border-0 mb-3 py-2 px-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Clique em <strong>Abrir e Revisar</strong> para ver o arquivo escaneado e vincular manualmente à nota fiscal correta.
+    </div>
     <div class="card shadow-sm">
       <div class="card-body p-0">
-        {% if canhotos_revisao %}
         <div class="table-responsive">
-          <table class="table table-hover table-striped mb-0 align-middle">
+          <table class="table table-hover mb-0 align-middle">
             <thead class="table-dark">
               <tr>
                 <th>#</th>
                 <th>Arquivo</th>
-                <th>Número Detectado</th>
+                <th>Nº Detectado</th>
                 <th>Confiança</th>
-                <th>Erro / Motivo</th>
-                <th>Atualizado em</th>
-                <th class="text-center">Ações</th>
+                <th>Motivo / Erro</th>
+                <th>Aguardando há</th>
+                <th class="text-center">Ação</th>
               </tr>
             </thead>
             <tbody>
               {% for canhoto in canhotos_revisao %}
               <tr>
-                <td>{{ canhoto.pk }}</td>
+                <td class="text-muted small">{{ canhoto.pk }}</td>
                 <td>
                   {% if canhoto.arquivo %}
                     <a href="{% url 'canhotos:arquivo' canhoto.pk %}" target="_blank"
-                       class="text-truncate d-inline-block" style="max-width:180px;" title="{{ canhoto.nome_arquivo }}">
-                      <i class="bi bi-file-earmark me-1"></i>{{ canhoto.nome_arquivo }}
+                       class="text-truncate d-inline-block text-decoration-none"
+                       style="max-width:160px;" title="{{ canhoto.nome_arquivo }}">
+                      <i class="bi bi-file-earmark me-1 text-muted"></i>
+                      <span class="text-dark">{{ canhoto.nome_arquivo }}</span>
                     </a>
                   {% else %}
-                    <span class="text-muted">Sem arquivo</span>
+                    <span class="text-muted small">Sem arquivo</span>
                   {% endif %}
                 </td>
                 <td>
-                  {{ canhoto.numero_detectado|default:"—" }}
+                  {% if canhoto.numero_detectado %}
+                    <code class="text-dark">{{ canhoto.numero_detectado }}</code>
+                  {% else %}
+                    <span class="text-muted small">Não detectado</span>
+                  {% endif %}
                 </td>
                 <td>
                   {% if canhoto.confianca_deteccao == "ALTA" %}
@@ -83,15 +111,15 @@
                     <span class="text-muted">—</span>
                   {% endif %}
                 </td>
-                <td class="small text-muted">
-                  <span class="text-truncate d-inline-block" style="max-width:250px;" title="{{ canhoto.erro_mensagem }}">
-                    {{ canhoto.erro_mensagem|truncatechars:80|default:"—" }}
+                <td class="small text-muted" style="max-width:260px;">
+                  <span class="d-inline-block text-truncate w-100" title="{{ canhoto.erro_mensagem }}">
+                    {{ canhoto.erro_mensagem|default:"—"|truncatechars:70 }}
                   </span>
                 </td>
-                <td class="small text-muted">{{ canhoto.updated_at|date:"d/m/Y H:i" }}</td>
-                <td class="text-center">
-                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-warning" title="Revisar agora">
-                    <i class="bi bi-pencil-square me-1"></i>Revisar
+                <td class="small text-muted text-nowrap">{{ canhoto.updated_at|timesince }} atrás</td>
+                <td class="text-center text-nowrap">
+                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-warning">
+                    <i class="bi bi-pencil-square me-1"></i>Abrir e Revisar
                   </a>
                 </td>
               </tr>
@@ -99,61 +127,68 @@
             </tbody>
           </table>
         </div>
-        {% else %}
-        <div class="text-center py-5 text-muted">
-          <i class="bi bi-check2-circle display-4"></i>
-          <p class="mt-2">Nenhum canhoto individual aguardando revisão. Tudo em dia!</p>
-        </div>
-        {% endif %}
       </div>
     </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="bi bi-check2-circle text-success"></i>
+      <p class="fw-semibold">Nenhum canhoto individual aguarda revisão.</p>
+      <p class="small">O sistema conciliou todos os canhotos automaticamente.</p>
+    </div>
+    {% endif %}
   </div>
 
-  <!-- Divisórias Aguardando Revisão -->
+  <!-- TAB 2: Divisórias -->
   <div class="tab-pane fade" id="tab-aguardando" role="tabpanel">
+    {% if aguardando %}
+    <div class="alert alert-info border-0 mb-3 py-2 px-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Folhas divisórias cobrem várias notas de uma vez. Abra cada uma e marque quais notas ela corresponde.
+    </div>
     <div class="card shadow-sm">
       <div class="card-body p-0">
-        {% if aguardando %}
         <div class="table-responsive">
-          <table class="table table-hover table-striped mb-0 align-middle">
+          <table class="table table-hover mb-0 align-middle">
             <thead class="table-dark">
               <tr>
                 <th>#</th>
                 <th>Arquivo</th>
                 <th>Tipo</th>
-                <th>Números Detectados</th>
-                <th>Notas Já Atribuídas</th>
-                <th>Atualizado em</th>
-                <th class="text-center">Ações</th>
+                <th>Números</th>
+                <th>Atribuídas</th>
+                <th>Aguardando há</th>
+                <th class="text-center">Ação</th>
               </tr>
             </thead>
             <tbody>
               {% for canhoto in aguardando %}
               <tr>
-                <td>{{ canhoto.pk }}</td>
+                <td class="text-muted small">{{ canhoto.pk }}</td>
                 <td>
-                  {% if canhoto.arquivo %}
-                    <span class="text-truncate d-inline-block" style="max-width:180px;" title="{{ canhoto.nome_arquivo }}">
-                      <i class="bi bi-file-earmark me-1"></i>{{ canhoto.nome_arquivo }}
-                    </span>
-                  {% else %}
-                    <span class="text-muted">Sem arquivo</span>
-                  {% endif %}
+                  <span class="text-truncate d-inline-block" style="max-width:160px;" title="{{ canhoto.nome_arquivo }}">
+                    <i class="bi bi-file-earmark me-1 text-muted"></i>{{ canhoto.nome_arquivo|default:"Sem arquivo" }}
+                  </span>
                 </td>
                 <td><span class="badge bg-dark">{{ canhoto.get_tipo_pagina_display }}</span></td>
                 <td class="small">
-                  {{ canhoto.numeros_lista_items|length }} nº
+                  <span class="fw-semibold">{{ canhoto.numeros_lista_items|length }}</span> nº
                   {% if canhoto.numeros_lista_items %}
-                    ({{ canhoto.numeros_lista_items|first }}…{{ canhoto.numeros_lista_items|last }})
+                    <span class="text-muted">({{ canhoto.numeros_lista_items|first }}…{{ canhoto.numeros_lista_items|last }})</span>
                   {% endif %}
                 </td>
-                <td class="small">
-                  <span class="badge bg-secondary">{{ canhoto.notas_atendidas.count }} / {{ canhoto.numeros_lista_items|length }}</span>
+                <td>
+                  {% with atrib=canhoto.notas_atendidas.count total=canhoto.numeros_lista_items|length %}
+                    {% if atrib == total and total > 0 %}
+                      <span class="badge bg-success">{{ atrib }}/{{ total }}</span>
+                    {% else %}
+                      <span class="badge bg-secondary">{{ atrib }}/{{ total }}</span>
+                    {% endif %}
+                  {% endwith %}
                 </td>
-                <td class="small text-muted">{{ canhoto.updated_at|date:"d/m/Y H:i" }}</td>
+                <td class="small text-muted text-nowrap">{{ canhoto.updated_at|timesince }} atrás</td>
                 <td class="text-center">
-                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-warning" title="Revisar agora">
-                    <i class="bi bi-pencil-square me-1"></i>Revisar
+                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-warning">
+                    <i class="bi bi-pencil-square me-1"></i>Abrir e Revisar
                   </a>
                 </td>
               </tr>
@@ -161,45 +196,41 @@
             </tbody>
           </table>
         </div>
-        {% else %}
-        <div class="text-center py-5 text-muted">
-          <i class="bi bi-check2-circle display-4"></i>
-          <p class="mt-2">Nenhuma divisória aguardando revisão. Tudo em dia!</p>
-        </div>
-        {% endif %}
       </div>
     </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="bi bi-check2-circle text-success"></i>
+      <p class="fw-semibold">Nenhuma folha divisória aguarda revisão.</p>
+    </div>
+    {% endif %}
   </div>
 
-  <!-- Divisórias Revisadas -->
+  <!-- TAB 3: Revisados -->
   <div class="tab-pane fade" id="tab-revisados" role="tabpanel">
+    {% if revisados %}
     <div class="card shadow-sm">
       <div class="card-body p-0">
-        {% if revisados %}
         <div class="table-responsive">
-          <table class="table table-hover table-striped mb-0 align-middle">
+          <table class="table table-hover mb-0 align-middle">
             <thead class="table-dark">
               <tr>
                 <th>#</th>
                 <th>Arquivo</th>
                 <th>Tipo</th>
                 <th>Notas Atribuídas</th>
-                <th>Atualizado em</th>
-                <th class="text-center">Ações</th>
+                <th>Revisado em</th>
+                <th class="text-center">Ver</th>
               </tr>
             </thead>
             <tbody>
               {% for canhoto in revisados %}
               <tr>
-                <td>{{ canhoto.pk }}</td>
+                <td class="text-muted small">{{ canhoto.pk }}</td>
                 <td>
-                  {% if canhoto.arquivo %}
-                    <span class="text-truncate d-inline-block" style="max-width:180px;" title="{{ canhoto.nome_arquivo }}">
-                      <i class="bi bi-file-earmark me-1"></i>{{ canhoto.nome_arquivo }}
-                    </span>
-                  {% else %}
-                    <span class="text-muted">Sem arquivo</span>
-                  {% endif %}
+                  <span class="text-truncate d-inline-block" style="max-width:160px;" title="{{ canhoto.nome_arquivo }}">
+                    <i class="bi bi-file-earmark me-1 text-muted"></i>{{ canhoto.nome_arquivo|default:"Sem arquivo" }}
+                  </span>
                 </td>
                 <td><span class="badge bg-dark">{{ canhoto.get_tipo_pagina_display }}</span></td>
                 <td class="small">
@@ -211,8 +242,8 @@
                 </td>
                 <td class="small text-muted">{{ canhoto.updated_at|date:"d/m/Y H:i" }}</td>
                 <td class="text-center">
-                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-outline-primary" title="Ver detalhes">
-                    <i class="bi bi-eye"></i>
+                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-eye me-1"></i>Ver
                   </a>
                 </td>
               </tr>
@@ -220,14 +251,14 @@
             </tbody>
           </table>
         </div>
-        {% else %}
-        <div class="text-center py-5 text-muted">
-          <i class="bi bi-inbox display-4"></i>
-          <p class="mt-2">Nenhuma divisória revisada ainda.</p>
-        </div>
-        {% endif %}
       </div>
     </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="bi bi-inbox"></i>
+      <p>Nenhuma divisória revisada ainda.</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

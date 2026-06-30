@@ -398,51 +398,69 @@ class ProcessandoListView(ListView):
 
 class CorrigirNumeroView(View):
     """
-    POST-only view that lets an operator manually validate/correct the
-    numero_detectado of a canhoto (typically one with MEDIA/BAIXA confidence
-    or no detection at all). Marks confianca_deteccao as ALTA since a human
-    confirmed it. Does not auto-link to a nota — use VincularManualView for that.
+    POST-only view: operator corrects/validates the NF number on a canhoto.
+    After saving, immediately attempts automatic conciliation. On success, the
+    canhoto moves to SUCESSO and exits REVISAO/ERRO. On failure (nota not found),
+    it stays in REVISAO so the operator can try VincularManualView instead.
     """
     http_method_names = ['post']
 
     def post(self, request, pk):
         canhoto = get_object_or_404(Canhoto, pk=pk)
         form = CorrigirNumeroForm(request.POST)
-        if form.is_valid():
-            numeros = form.numeros_list
-            if len(numeros) > 1:
-                # Vários números → trata o canhoto como divisória que atende
-                # múltiplas notas. Popula numeros_lista para liberar a checklist
-                # de atribuição "Quais notas esses canhotos atendem?".
-                from apps.canhotos.models import TipoPagina
-                canhoto.tipo_pagina = TipoPagina.DIVISORIA
-                canhoto.numeros_lista = ', '.join(numeros)
-                canhoto.numero_detectado = ''
-                canhoto.confianca_deteccao = 'ALTA'
-                canhoto.status_processamento = StatusProcessamento.REVISAO
-                canhoto.erro_mensagem = ''
-                canhoto.save(update_fields=[
-                    'tipo_pagina', 'numeros_lista', 'numero_detectado',
-                    'confianca_deteccao', 'status_processamento', 'erro_mensagem', 'updated_at',
-                ])
-                messages.success(
-                    request,
-                    f'Canhoto {canhoto.id} marcado como divisória com {len(numeros)} números. '
-                    'Selecione abaixo quais notas ele atende.',
-                )
-                logger.info('Canhoto %s definido como divisória manual: %s', canhoto.id, numeros)
-            else:
-                numero = numeros[0]
-                canhoto.numero_detectado = numero
-                canhoto.confianca_deteccao = 'ALTA'
-                canhoto.save(update_fields=['numero_detectado', 'confianca_deteccao', 'updated_at'])
-                messages.success(
-                    request,
-                    f'Número do canhoto {canhoto.id} corrigido manualmente para {numero}.',
-                )
-                logger.info('Número corrigido manualmente: canhoto_id=%s numero=%s', canhoto.id, numero)
-        else:
+        if not form.is_valid():
             for field, errs in form.errors.items():
                 for err in errs:
                     messages.error(request, f'{field}: {err}')
+            return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+        numeros = form.numeros_list
+
+        if len(numeros) > 1:
+            from apps.canhotos.models import TipoPagina
+            canhoto.tipo_pagina = TipoPagina.DIVISORIA
+            canhoto.numeros_lista = ', '.join(numeros)
+            canhoto.numero_detectado = ''
+            canhoto.confianca_deteccao = 'ALTA'
+            canhoto.status_processamento = StatusProcessamento.REVISAO
+            canhoto.erro_mensagem = ''
+            canhoto.save(update_fields=[
+                'tipo_pagina', 'numeros_lista', 'numero_detectado',
+                'confianca_deteccao', 'status_processamento', 'erro_mensagem', 'updated_at',
+            ])
+            messages.success(
+                request,
+                f'Canhoto {canhoto.id} convertido em divisória com {len(numeros)} números. '
+                'Selecione abaixo quais notas ele atende.',
+            )
+            logger.info('Canhoto %s definido como divisória manual: %s', canhoto.id, numeros)
+            return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+        numero = numeros[0]
+        canhoto.numero_detectado = numero
+        canhoto.confianca_deteccao = 'ALTA'
+        canhoto.erro_mensagem = ''
+        canhoto.save(update_fields=['numero_detectado', 'confianca_deteccao', 'erro_mensagem', 'updated_at'])
+        logger.info('Número corrigido manualmente: canhoto_id=%s numero=%s', canhoto.id, numero)
+
+        # Tenta conciliação automática agora que o número foi validado pelo operador.
+        from services.conciliacao_service import ConciliacaoService
+        try:
+            ConciliacaoService().conciliar(canhoto.id, numero)
+            messages.success(
+                request,
+                f'Canhoto {canhoto.id} vinculado com sucesso à NF {numero}!',
+            )
+            logger.info('Conciliação manual bem-sucedida: canhoto_id=%s nf=%s', canhoto.id, numero)
+        except Exception as exc:
+            canhoto.status_processamento = StatusProcessamento.REVISAO
+            canhoto.erro_mensagem = f'Número {numero} salvo, mas não foi encontrado no sistema: {exc}'
+            canhoto.save(update_fields=['status_processamento', 'erro_mensagem', 'updated_at'])
+            messages.warning(
+                request,
+                f'Número {numero} salvo, mas a NF não foi encontrada no sistema. '
+                'Use "Vincular Manualmente" para selecionar a nota correta.',
+            )
+            logger.warning('Conciliação após correção falhou: canhoto_id=%s nf=%s erro=%s', canhoto.id, numero, exc)
+
         return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))

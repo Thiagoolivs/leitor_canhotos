@@ -1,75 +1,101 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Erros - Leitor de Canhotos{% endblock %}
+{% block title %}Erros de Processamento - Leitor de Canhotos{% endblock %}
 {% block nav_erros %}active{% endblock %}
 
 {% block content %}
-<div class="row mb-3 align-items-center">
+<div class="row mb-4 align-items-center">
   <div class="col">
-    <h2 class="mb-0"><i class="bi bi-exclamation-triangle me-2 text-danger"></i>Erros de Processamento</h2>
-    <small class="text-muted">{{ total_count }} canhoto(s) com erro</small>
+    <h2 class="mb-0">
+      <i class="bi bi-exclamation-triangle me-2 text-danger"></i>Erros de Processamento
+    </h2>
+    <small class="text-muted">
+      {{ total_count }} canhoto(s) com falha — reprocesse para tentar novamente, ou abra para corrigir manualmente
+    </small>
   </div>
+</div>
+
+{% if canhotos %}
+
+<div class="alert alert-warning border-0 mb-3 py-2 px-3">
+  <i class="bi bi-lightbulb me-1"></i>
+  <strong>Dica:</strong> Clique em <strong>Reprocessar</strong> para o sistema tentar novamente a leitura automática.
+  Se não funcionar, clique em <strong>Corrigir</strong> para inserir o número manualmente.
 </div>
 
 <div class="card shadow-sm">
   <div class="card-body p-0">
-    {% if canhotos %}
     <div class="table-responsive">
-      <table class="table table-hover table-striped mb-0 align-middle">
+      <table class="table table-hover mb-0 align-middle">
         <thead class="table-dark">
           <tr>
             <th>#</th>
             <th>Arquivo</th>
-            <th>Número Detectado</th>
-            <th>Mensagem de Erro</th>
-            <th>Atualizado em</th>
-            <th class="text-center">Ações</th>
+            <th>Nº Detectado</th>
+            <th>O que deu errado</th>
+            <th class="text-nowrap">Ocorreu em</th>
+            <th class="text-center" style="min-width:180px;">Ações</th>
           </tr>
         </thead>
         <tbody>
           {% for canhoto in canhotos %}
           <tr>
-            <td>{{ canhoto.pk }}</td>
+            <td class="text-muted small">{{ canhoto.pk }}</td>
             <td>
               {% if canhoto.arquivo %}
                 <a href="{% url 'canhotos:arquivo' canhoto.pk %}" target="_blank"
-                   class="text-truncate d-inline-block" style="max-width:180px;" title="{{ canhoto.nome_arquivo }}">
-                  <i class="bi bi-file-earmark me-1"></i>{{ canhoto.nome_arquivo }}
+                   class="text-decoration-none d-flex align-items-center gap-1"
+                   title="{{ canhoto.nome_arquivo }}">
+                  <i class="bi bi-file-earmark text-muted"></i>
+                  <span class="text-dark text-truncate" style="max-width:160px;">{{ canhoto.nome_arquivo }}</span>
                 </a>
               {% else %}
-                <span class="text-muted">Sem arquivo</span>
+                <span class="text-muted small">Sem arquivo</span>
               {% endif %}
             </td>
             <td>{{ canhoto.numero_detectado|default:"—" }}</td>
-            <td class="small">
-              <span class="text-danger text-truncate d-inline-block" style="max-width:350px;" title="{{ canhoto.erro_mensagem }}">
-                {{ canhoto.erro_mensagem|truncatechars:100|default:"Sem detalhes" }}
+            <td>
+              <span class="text-danger small d-block text-truncate" style="max-width:300px;" title="{{ canhoto.erro_mensagem }}">
+                {{ canhoto.erro_mensagem|default:"Sem detalhes"|truncatechars:90 }}
               </span>
+              {% if canhoto.erro_mensagem|length > 90 %}
+                <button class="btn btn-link btn-sm p-0 text-muted" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#erro-{{ canhoto.pk }}" aria-expanded="false">
+                  <small>ver mais</small>
+                </button>
+                <div class="collapse" id="erro-{{ canhoto.pk }}">
+                  <div class="mt-1 p-2 bg-light rounded small text-danger" style="word-break:break-word;">
+                    {{ canhoto.erro_mensagem }}
+                  </div>
+                </div>
+              {% endif %}
             </td>
-            <td class="small text-muted">{{ canhoto.updated_at|date:"d/m/Y H:i" }}</td>
+            <td class="small text-muted text-nowrap">{{ canhoto.updated_at|date:"d/m/Y H:i" }}</td>
             <td class="text-center">
-              <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-outline-primary" title="Ver detalhes">
-                <i class="bi bi-eye me-1"></i>Ver
-              </a>
-              <form method="post" action="{% url 'canhotos:reprocessar' canhoto.pk %}" class="d-inline">
+              <!-- Reprocessar -->
+              <form method="post" action="{% url 'canhotos:reprocessar' canhoto.pk %}" class="d-inline" id="form-repr-{{ canhoto.pk }}">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-outline-warning" title="Reprocessar OCR">
-                  <i class="bi bi-arrow-clockwise"></i>
+                <button type="submit" class="btn btn-sm btn-outline-warning"
+                        title="Tentar ler novamente automaticamente"
+                        data-confirm="Reprocessar OCR para o canhoto #{{ canhoto.pk }}?"
+                        data-confirm-danger="false"
+                        data-confirm-label="Reprocessar"
+                        data-form="form-repr-{{ canhoto.pk }}">
+                  <i class="bi bi-arrow-clockwise me-1"></i>Reprocessar
                 </button>
               </form>
+              <!-- Abrir para corrigir manualmente -->
+              <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-outline-primary ms-1"
+                 title="Abrir e inserir o número manualmente">
+                <i class="bi bi-pencil me-1"></i>Corrigir
+              </a>
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% else %}
-    <div class="text-center py-5 text-muted">
-      <i class="bi bi-check2-circle display-4"></i>
-      <p class="mt-2">Nenhum canhoto com erro. Tudo funcionando!</p>
-    </div>
-    {% endif %}
   </div>
 </div>
 
@@ -79,44 +105,37 @@
   <ul class="pagination justify-content-center">
     {% if page_obj.has_previous %}
       <li class="page-item">
-        <a class="page-link" href="?page=1">
-          <i class="bi bi-chevron-double-left"></i>
-        </a>
+        <a class="page-link" href="?page=1"><i class="bi bi-chevron-double-left"></i></a>
       </li>
       <li class="page-item">
-        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
-          <i class="bi bi-chevron-left"></i>
-        </a>
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}"><i class="bi bi-chevron-left"></i></a>
       </li>
     {% endif %}
-
     {% for num in page_obj.paginator.page_range %}
       {% if page_obj.number == num %}
         <li class="page-item active"><span class="page-link">{{ num }}</span></li>
       {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
-        <li class="page-item">
-          <a class="page-link" href="?page={{ num }}">{{ num }}</a>
-        </li>
+        <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
       {% endif %}
     {% endfor %}
-
     {% if page_obj.has_next %}
       <li class="page-item">
-        <a class="page-link" href="?page={{ page_obj.next_page_number }}">
-          <i class="bi bi-chevron-right"></i>
-        </a>
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}"><i class="bi bi-chevron-right"></i></a>
       </li>
       <li class="page-item">
-        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">
-          <i class="bi bi-chevron-double-right"></i>
-        </a>
+        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}"><i class="bi bi-chevron-double-right"></i></a>
       </li>
     {% endif %}
   </ul>
-  <p class="text-center text-muted small">
-    Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
-    &mdash; {{ page_obj.paginator.count }} registro(s) no total
-  </p>
+  <p class="text-center text-muted small">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }} — {{ total_count }} no total</p>
 </nav>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-check2-circle text-success"></i>
+  <p class="fw-semibold">Nenhum canhoto com erro.</p>
+  <p class="small">O sistema está funcionando normalmente.</p>
+</div>
 {% endif %}
 {% endblock %}

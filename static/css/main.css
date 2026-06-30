@@ -1,105 +1,26 @@
 /*
- * main.css - Custom styles for Leitor de Canhotos
- * Complements Bootstrap 5 with domain-specific status badges
- * and minor table/layout improvements.
+ * main.css - Leitor de Canhotos
+ * Bootstrap 5 extension with domain-specific components.
  */
 
 /* ===================================================================
-   STATUS BADGES
-   Consistent colors across all templates for nota/canhoto statuses.
+   CSS VARIABLES
    =================================================================== */
 
-.badge-status {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.4;
-    white-space: nowrap;
-}
-
-/* Nota Fiscal statuses */
-.badge-aguardando {
-    background-color: #ffc107;
-    color: #000;
-}
-
-.badge-finalizado {
-    background-color: #198754;
-    color: #fff;
-}
-
-.badge-erro {
-    background-color: #dc3545;
-    color: #fff;
-}
-
-/* Canhoto processamento statuses */
-.badge-pendente {
-    background-color: #6c757d;
-    color: #fff;
-}
-
-.badge-processando {
-    background-color: #0d6efd;
-    color: #fff;
-}
-
-.badge-sucesso {
-    background-color: #198754;
-    color: #fff;
+:root {
+  --lc-blue-dark:  #0d3b78;
+  --lc-blue:       #0d6efd;
+  --lc-radius:     0.5rem;
+  --lc-shadow:     0 2px 8px rgba(0, 0, 0, 0.08);
+  --lc-shadow-md:  0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 /* ===================================================================
-   TABLE IMPROVEMENTS
+   GLOBAL BODY
    =================================================================== */
 
-.table th {
-    white-space: nowrap;
-    font-weight: 600;
-    font-size: 0.85rem;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-}
-
-.table td {
-    vertical-align: middle;
-    font-size: 0.9rem;
-}
-
-/* Action button group in tables */
-.table .btn-sm {
-    padding: 2px 8px;
-    font-size: 0.8rem;
-}
-
-/* ===================================================================
-   CARDS
-   =================================================================== */
-
-.card {
-    border: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.card-header {
-    font-weight: 600;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-/* ===================================================================
-   TIMELINE (used in nota detalhe)
-   =================================================================== */
-
-.timeline-item {
-    position: relative;
-    padding-left: 10px;
-    border-left: 3px solid #dee2e6;
-    margin-left: 12px;
-}
-
-.timeline-item .badge {
-    font-size: 12px;
+body {
+  font-size: 0.925rem;
 }
 
 /* ===================================================================
@@ -107,55 +28,152 @@
    =================================================================== */
 
 .navbar-custom {
-    background: linear-gradient(90deg, #0d3b78 0%, #0d6efd 100%);
-    box-shadow: 0 2px 10px rgba(13, 60, 120, 0.25);
-    padding-top: 0.6rem;
-    padding-bottom: 0.6rem;
+  background: linear-gradient(90deg, var(--lc-blue-dark) 0%, var(--lc-blue) 100%);
+  box-shadow: 0 2px 10px rgba(13, 60, 120, 0.25);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
 }
 
 .navbar-brand {
-    font-size: 1.15rem;
-    letter-spacing: 0.01em;
+  font-size: 1.1rem;
+  letter-spacing: 0.01em;
 }
 
 .navbar-brand .brand-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 8px;
-    font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  font-size: 1rem;
 }
 
 .navbar-custom .nav-link {
-    font-weight: 500;
-    font-size: 0.92rem;
-    padding: 0.5rem 0.9rem;
-    border-radius: 6px;
-    margin: 0 0.15rem;
-    color: rgba(255, 255, 255, 0.85);
-    transition: background-color 0.15s ease, color 0.15s ease;
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 6px;
+  margin: 0 0.1rem;
+  color: rgba(255, 255, 255, 0.82);
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .navbar-custom .nav-link:hover {
-    background-color: rgba(255, 255, 255, 0.12);
-    color: #fff;
+  background-color: rgba(255, 255, 255, 0.14);
+  color: #fff;
 }
 
 .navbar-custom .nav-link.active {
-    background-color: rgba(255, 255, 255, 0.22);
-    color: #fff;
-    font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-weight: 600;
 }
 
 /* ===================================================================
-   FOOTER
+   STATUS BADGES
    =================================================================== */
 
-.footer {
-    font-size: 0.8rem;
+.badge-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.badge-aguardando  { background-color: #ffc107; color: #000; }
+.badge-finalizado  { background-color: #198754; color: #fff; }
+.badge-erro        { background-color: #dc3545; color: #fff; }
+.badge-pendente    { background-color: #6c757d; color: #fff; }
+.badge-processando { background-color: #0d6efd; color: #fff; }
+.badge-sucesso     { background-color: #198754; color: #fff; }
+.badge-revisao     { background-color: #0dcaf0; color: #000; }
+
+/* ===================================================================
+   CARDS
+   =================================================================== */
+
+.card {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--lc-radius);
+}
+
+.card-header {
+  font-weight: 600;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+/* Clickable card for dashboard KPIs */
+.card-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card-link:hover .card {
+  transform: translateY(-2px);
+  box-shadow: var(--lc-shadow-md) !important;
+}
+
+.card-link .card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* ===================================================================
+   ACTION SECTION (detail pages)
+   =================================================================== */
+
+.action-section {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--lc-radius);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  background: #fff;
+}
+
+.action-section:last-child {
+  margin-bottom: 0;
+}
+
+.action-section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6c757d;
+  margin-bottom: 0.6rem;
+}
+
+/* ===================================================================
+   TABLES
+   =================================================================== */
+
+.table th {
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.table td {
+  vertical-align: middle;
+  font-size: 0.9rem;
+}
+
+.table .btn-sm {
+  padding: 3px 10px;
+  font-size: 0.8rem;
+}
+
+/* Row hover reveal (action column) */
+.table tbody tr {
+  transition: background-color 0.1s ease;
 }
 
 /* ===================================================================
@@ -164,70 +182,242 @@
 
 #filter-form .form-control,
 #filter-form .form-select {
-    font-size: 0.875rem;
+  font-size: 0.875rem;
+}
+
+/* Active filter indicator */
+.filter-active-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--lc-blue);
+  border-radius: 50%;
+  margin-left: 4px;
+  vertical-align: middle;
 }
 
 /* ===================================================================
-   MISC
+   PAGINATION
    =================================================================== */
 
-/* Make empty state icons look good */
-.display-4.bi {
-    font-size: 3.5rem;
-    opacity: 0.4;
+.pagination .page-link {
+  font-size: 0.85rem;
 }
 
-/* Scrollable tables on small screens */
-.table-responsive {
-    border-radius: 0 0 0.375rem 0.375rem;
+/* ===================================================================
+   EMPTY STATE
+   =================================================================== */
+
+.empty-state {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #adb5bd;
 }
 
-/* Form labels */
-.form-label.fw-semibold {
-    font-size: 0.875rem;
-    color: #495057;
+.empty-state .bi {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 0.75rem;
+  opacity: 0.5;
+}
+
+.empty-state p {
+  margin-bottom: 0.5rem;
+  color: #6c757d;
+}
+
+/* ===================================================================
+   PRIORITY / CALL-TO-ACTION BANNER (dashboard)
+   =================================================================== */
+
+.priority-banner {
+  border-left: 4px solid var(--lc-blue);
+  background: linear-gradient(90deg, rgba(13,110,253,0.06) 0%, transparent 60%);
+  border-radius: 0 var(--lc-radius) var(--lc-radius) 0;
+  padding: 0.9rem 1.1rem;
+}
+
+.priority-banner.priority-warning {
+  border-left-color: #ffc107;
+  background: linear-gradient(90deg, rgba(255,193,7,0.08) 0%, transparent 60%);
+}
+
+.priority-banner.priority-danger {
+  border-left-color: #dc3545;
+  background: linear-gradient(90deg, rgba(220,53,69,0.07) 0%, transparent 60%);
+}
+
+.priority-banner.priority-success {
+  border-left-color: #198754;
+  background: linear-gradient(90deg, rgba(25,135,84,0.07) 0%, transparent 60%);
+}
+
+/* ===================================================================
+   DJANGO MESSAGES (auto-dismiss)
+   =================================================================== */
+
+.alert-auto-dismiss {
+  animation: fadeOutAlert 0.5s ease 5s forwards;
+}
+
+@keyframes fadeOutAlert {
+  to { opacity: 0; max-height: 0; padding: 0; margin: 0; overflow: hidden; }
+}
+
+/* ===================================================================
+   LOADING SPINNER
+   =================================================================== */
+
+.spinner-inline {
+  width: 1em;
+  height: 1em;
+  border: 2px solid rgba(0,0,0,0.1);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.6s linear infinite;
+  vertical-align: -0.2em;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* "Atualizando..." dot indicator */
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #198754;
+  animation: pulse 2s ease infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
 }
 
 /* ===================================================================
    FLOATING PREV/NEXT NAVIGATION
-   Lets the user move between records (canhotos/notas) within the same
-   filtered/ordered set without scrolling back to the top of the page.
    =================================================================== */
 
 .nav-flutuante {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 1030;
-    width: 46px;
-    height: 46px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: rgba(13, 110, 253, 0.85);
-    color: #fff;
-    font-size: 1.3rem;
-    border-radius: 50%;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    transition: background-color 0.15s ease, transform 0.15s ease;
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1030;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(13, 110, 253, 0.8);
+  color: #fff;
+  font-size: 1.2rem;
+  border-radius: 50%;
+  box-shadow: var(--lc-shadow-md);
+  transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
 .nav-flutuante:hover {
-    background-color: #0d6efd;
-    color: #fff;
-    transform: translateY(-50%) scale(1.08);
+  background-color: var(--lc-blue);
+  color: #fff;
+  transform: translateY(-50%) scale(1.1);
 }
 
-.nav-flutuante-esq {
-    left: 14px;
-}
-
-.nav-flutuante-dir {
-    right: 14px;
-}
+.nav-flutuante-esq { left: 14px; }
+.nav-flutuante-dir { right: 14px; }
 
 @media (max-width: 768px) {
-    .nav-flutuante {
-        display: none;
-    }
+  .nav-flutuante { display: none; }
+}
+
+/* ===================================================================
+   TIMELINE
+   =================================================================== */
+
+.timeline-item {
+  position: relative;
+  padding-left: 10px;
+  border-left: 3px solid #dee2e6;
+  margin-left: 12px;
+}
+
+.timeline-item .badge {
+  font-size: 0.75rem;
+}
+
+/* ===================================================================
+   OCR TEXT PANEL
+   =================================================================== */
+
+.ocr-text-panel {
+  font-size: 0.78rem;
+  max-height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8f9fa;
+  padding: 0.75rem 1rem;
+  border-radius: 0 0 var(--lc-radius) var(--lc-radius);
+  line-height: 1.55;
+}
+
+/* ===================================================================
+   STATUS PILL (larger, for detail pages)
+   =================================================================== */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 6px 14px;
+  border-radius: 100px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.status-pill-sucesso    { background: #d1e7dd; color: #0a3622; }
+.status-pill-erro       { background: #f8d7da; color: #58151c; }
+.status-pill-revisao    { background: #cff4fc; color: #055160; }
+.status-pill-pendente   { background: #e2e3e5; color: #41464b; }
+.status-pill-processando{ background: #cfe2ff; color: #084298; }
+
+/* ===================================================================
+   FOOTER
+   =================================================================== */
+
+.footer {
+  font-size: 0.8rem;
+}
+
+/* ===================================================================
+   FORM LABELS
+   =================================================================== */
+
+.form-label.fw-semibold {
+  font-size: 0.875rem;
+  color: #495057;
+}
+
+/* ===================================================================
+   SCROLLABLE TABLES
+   =================================================================== */
+
+.table-responsive {
+  border-radius: 0 0 var(--lc-radius) var(--lc-radius);
+}
+
+/* ===================================================================
+   MOBILE RESPONSIVE TWEAKS
+   =================================================================== */
+
+@media (max-width: 576px) {
+  .btn { font-size: 0.875rem; }
+  h2 { font-size: 1.4rem; }
+  .fs-2 { font-size: 1.5rem !important; }
+  .card-body { padding: 0.85rem; }
 }

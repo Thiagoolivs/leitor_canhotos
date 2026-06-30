@@ -17,51 +17,57 @@
   </div>
 </div>
 
-<!-- Status bar — updated silently by polling -->
-<div class="row mb-3" id="status-bar">
+<!-- Barra de status (atualizada por polling) -->
+<div class="row g-2 mb-4">
   <div class="col-auto">
-    <span class="badge bg-warning text-dark fs-6 px-3 py-2">
-      Aguardando: <span id="count-aguardando">—</span>
-    </span>
+    <a href="?status=AGUARDANDO_CANHOTO" class="text-decoration-none">
+      <span class="badge-status badge-aguardando px-3 py-2 d-flex align-items-center gap-1">
+        <i class="bi bi-hourglass-split"></i>
+        Aguardando: <strong id="count-aguardando">—</strong>
+      </span>
+    </a>
   </div>
   <div class="col-auto">
-    <span class="badge bg-success fs-6 px-3 py-2">
-      Finalizados: <span id="count-finalizado">—</span>
-    </span>
+    <a href="?status=FINALIZADO" class="text-decoration-none">
+      <span class="badge-status badge-finalizado px-3 py-2 d-flex align-items-center gap-1">
+        <i class="bi bi-check-circle-fill"></i>
+        Finalizadas: <strong id="count-finalizado">—</strong>
+      </span>
+    </a>
   </div>
   <div class="col-auto">
-    <span class="badge bg-danger fs-6 px-3 py-2">
-      Erros: <span id="count-erro">—</span>
+    <span class="badge-status badge-pendente px-3 py-2 d-flex align-items-center gap-1">
+      <i class="bi bi-list-ul"></i>
+      Total: <strong id="count-total">—</strong>
     </span>
   </div>
-  <div class="col-auto text-muted small d-flex align-items-center">
-    Total: <span id="count-total" class="ms-1 fw-bold">—</span>
-    &nbsp;|&nbsp;
-    <span id="last-update" class="ms-1">atualizando...</span>
+  <div class="col-auto d-flex align-items-center text-muted small">
+    <span class="live-dot"></span>
+    <span id="last-update">atualizando...</span>
   </div>
 </div>
 
-<!-- Filter Form -->
+<!-- Filtros -->
 <div class="card shadow-sm mb-4">
-  <div class="card-header bg-white">
-    <h6 class="mb-0 text-muted"><i class="bi bi-funnel me-1"></i>Filtros</h6>
+  <div class="card-header bg-white py-2">
+    <h6 class="mb-0 text-muted"><i class="bi bi-funnel me-1"></i>Filtrar</h6>
   </div>
   <div class="card-body">
     <form method="get" id="filter-form">
-      <div class="row g-2">
+      <div class="row g-2 align-items-end">
         <div class="col-md-3">
           <label class="form-label small fw-semibold">Número da Nota</label>
           {{ filterset.form.numero }}
         </div>
         <div class="col-md-2">
-          <label class="form-label small fw-semibold">Data Emissão (de)</label>
+          <label class="form-label small fw-semibold">De</label>
           {{ filterset.form.data_emissao__gte }}
         </div>
         <div class="col-md-2">
-          <label class="form-label small fw-semibold">Data Emissão (até)</label>
+          <label class="form-label small fw-semibold">Até</label>
           {{ filterset.form.data_emissao__lte }}
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
           <label class="form-label small fw-semibold">Categoria</label>
           {{ filterset.form.categoria }}
         </div>
@@ -69,40 +75,35 @@
           <label class="form-label small fw-semibold">Status</label>
           {{ filterset.form.status }}
         </div>
-        <div class="col-md-3">
-          <label class="form-label small fw-semibold">Ordenar por Número</label>
-          <select name="ordem" class="form-select">
-            <option value="desc" {% if ordem == "desc" %}selected{% endif %}>Maior → Menor</option>
-            <option value="asc" {% if ordem == "asc" %}selected{% endif %}>Menor → Maior</option>
-          </select>
+        <div class="col-md-1">
+          <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-search"></i></button>
         </div>
       </div>
-      <div class="row mt-2">
-        <div class="col">
-          <button type="submit" class="btn btn-sm btn-outline-primary me-2">
-            <i class="bi bi-search me-1"></i>Filtrar
-          </button>
-          <a href="{% url 'notas:lista' %}?limpar=1" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-x-circle me-1"></i>Limpar
-          </a>
-        </div>
+      <div class="mt-2 d-flex gap-2 flex-wrap">
+        <a href="{% url 'notas:lista' %}?limpar=1" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-x-circle me-1"></i>Limpar filtros
+        </a>
+        <select name="ordem" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+          <option value="desc" {% if ordem == "desc" %}selected{% endif %}>Número: Maior → Menor</option>
+          <option value="asc" {% if ordem == "asc" %}selected{% endif %}>Número: Menor → Maior</option>
+        </select>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Table -->
+<!-- Tabela -->
 <div class="card shadow-sm">
   <div class="card-body p-0">
     {% if notas %}
     <div class="table-responsive">
-      <table class="table table-hover table-striped mb-0 align-middle">
+      <table class="table table-hover mb-0 align-middle">
         <thead class="table-dark">
           <tr>
             <th>Número</th>
             <th>Data Emissão</th>
             <th>Destinatário</th>
-            <th>Valor Total</th>
+            <th>Valor</th>
             <th>Status</th>
             <th>Canhoto</th>
             <th class="text-center">Ações</th>
@@ -112,12 +113,12 @@
           {% for nota in notas %}
           <tr>
             <td><strong>{{ nota.numero }}</strong></td>
-            <td>{{ nota.data_emissao|date:"d/m/Y"|default:"—" }}</td>
+            <td class="text-muted small text-nowrap">{{ nota.data_emissao|date:"d/m/Y"|default:"—" }}</td>
             <td class="text-truncate" style="max-width:160px;" title="{{ nota.destinatario }}">{{ nota.destinatario|default:"—" }}</td>
-            <td class="text-nowrap">{% if nota.valor_total %}R$ {{ nota.valor_total|floatformat:2 }}{% else %}—{% endif %}</td>
+            <td class="text-nowrap small">{% if nota.valor_total %}R$ {{ nota.valor_total|floatformat:2 }}{% else %}—{% endif %}</td>
             <td>
               {% if nota.status == "AGUARDANDO_CANHOTO" %}
-                <span class="badge-status badge-aguardando">Aguardando Canhoto</span>
+                <span class="badge-status badge-aguardando">Aguardando</span>
               {% elif nota.status == "FINALIZADO" %}
                 <span class="badge-status badge-finalizado">Finalizado</span>
               {% elif nota.status == "ERRO" %}
@@ -128,22 +129,18 @@
             </td>
             <td>
               {% if nota.canhoto %}
-                <a href="{% url 'canhotos:detalhe' nota.canhoto.pk %}" class="text-success">
-                  <i class="bi bi-check-circle-fill"></i> Vinculado
+                <a href="{% url 'canhotos:detalhe' nota.canhoto.pk %}" class="text-success text-decoration-none">
+                  <i class="bi bi-check-circle-fill me-1"></i>Vinculado
                 </a>
               {% else %}
-                <span class="text-muted"><i class="bi bi-dash-circle"></i> Sem canhoto</span>
+                <span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>Sem canhoto</span>
               {% endif %}
             </td>
-            <td class="text-center">
-              <a href="{% url 'notas:detalhe' nota.pk %}"
-                 class="btn btn-sm btn-outline-primary me-1"
-                 title="Detalhes">
-                <i class="bi bi-eye"></i>
+            <td class="text-center text-nowrap">
+              <a href="{% url 'notas:detalhe' nota.pk %}" class="btn btn-sm btn-outline-primary me-1" title="Ver detalhes">
+                <i class="bi bi-eye me-1"></i>Ver
               </a>
-              <a href="{% url 'notas:editar' nota.pk %}"
-                 class="btn btn-sm btn-outline-secondary"
-                 title="Editar">
+              <a href="{% url 'notas:editar' nota.pk %}" class="btn btn-sm btn-outline-secondary" title="Editar">
                 <i class="bi bi-pencil"></i>
               </a>
             </td>
@@ -153,9 +150,9 @@
       </table>
     </div>
     {% else %}
-    <div class="text-center py-5 text-muted">
-      <i class="bi bi-inbox display-4"></i>
-      <p class="mt-2">Nenhuma nota fiscal encontrada.</p>
+    <div class="empty-state">
+      <i class="bi bi-inbox"></i>
+      <p class="fw-semibold">Nenhuma nota fiscal encontrada.</p>
       <a href="{% url 'notas:criar' %}" class="btn btn-primary btn-sm">
         <i class="bi bi-plus-circle me-1"></i>Cadastrar Nota Fiscal
       </a>
@@ -164,52 +161,35 @@
   </div>
 </div>
 
-<!-- Pagination -->
+<!-- Paginação -->
 {% if page_obj.has_other_pages %}
 <nav class="mt-3" aria-label="Paginação">
   <ul class="pagination justify-content-center">
     {% if page_obj.has_previous %}
       <li class="page-item">
-        <a class="page-link" href="?page=1{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">
-          <i class="bi bi-chevron-double-left"></i>
-        </a>
+        <a class="page-link" href="?page=1{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}"><i class="bi bi-chevron-double-left"></i></a>
       </li>
       <li class="page-item">
-        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">
-          <i class="bi bi-chevron-left"></i>
-        </a>
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}"><i class="bi bi-chevron-left"></i></a>
       </li>
     {% endif %}
-
     {% for num in page_obj.paginator.page_range %}
       {% if page_obj.number == num %}
-        <li class="page-item active">
-          <span class="page-link">{{ num }}</span>
-        </li>
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
       {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
-        <li class="page-item">
-          <a class="page-link" href="?page={{ num }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">{{ num }}</a>
-        </li>
+        <li class="page-item"><a class="page-link" href="?page={{ num }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">{{ num }}</a></li>
       {% endif %}
     {% endfor %}
-
     {% if page_obj.has_next %}
       <li class="page-item">
-        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">
-          <i class="bi bi-chevron-right"></i>
-        </a>
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}"><i class="bi bi-chevron-right"></i></a>
       </li>
       <li class="page-item">
-        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}">
-          <i class="bi bi-chevron-double-right"></i>
-        </a>
+        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val }}{% endif %}{% endfor %}"><i class="bi bi-chevron-double-right"></i></a>
       </li>
     {% endif %}
   </ul>
-  <p class="text-center text-muted small">
-    Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
-    &mdash; {{ page_obj.paginator.count }} registro(s) no total
-  </p>
+  <p class="text-center text-muted small">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }} — {{ page_obj.paginator.count }} no total</p>
 </nav>
 {% endif %}
 {% endblock %}
@@ -217,31 +197,22 @@
 {% block extra_js %}
 <script>
 (function () {
-  var POLL_INTERVAL = 30000; // 30 seconds
+  var POLL_INTERVAL = 30000;
   var apiUrl = "{% url 'notas:status_counts' %}";
-
   function pad(n) { return n < 10 ? '0' + n : n; }
-
-  function updateCounts(data) {
-    document.getElementById('count-aguardando').textContent = data.aguardando;
-    document.getElementById('count-finalizado').textContent = data.finalizado;
-    document.getElementById('count-erro').textContent = data.erro;
-    document.getElementById('count-total').textContent = data.total;
-    var now = new Date();
-    document.getElementById('last-update').textContent =
-      'atualizado às ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
-  }
-
   function fetchCounts() {
     fetch(apiUrl, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
-      .then(updateCounts)
-      .catch(function () {
-        document.getElementById('last-update').textContent = 'erro ao atualizar';
-      });
+      .then(function (data) {
+        document.getElementById('count-aguardando').textContent = data.aguardando;
+        document.getElementById('count-finalizado').textContent = data.finalizado;
+        document.getElementById('count-total').textContent = data.total;
+        var now = new Date();
+        document.getElementById('last-update').textContent =
+          'atualizado às ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+      })
+      .catch(function () { document.getElementById('last-update').textContent = 'erro'; });
   }
-
-  // Fetch immediately on page load, then every 30s
   fetchCounts();
   setInterval(fetchCounts, POLL_INTERVAL);
 })();

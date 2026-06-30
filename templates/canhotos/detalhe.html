@@ -16,58 +16,69 @@
 </a>
 {% endif %}
 
+<!-- Navegação + Título -->
 <div class="row mb-3 align-items-center">
   <div class="col">
     <nav aria-label="breadcrumb">
-      <ol class="breadcrumb mb-0">
-        <li class="breadcrumb-item"><a href="{% url 'canhotos:lista' %}">Canhotos</a></li>
+      <ol class="breadcrumb mb-0 small">
+        {% if canhoto.status_processamento == "REVISAO" %}
+          <li class="breadcrumb-item"><a href="{% url 'canhotos:revisao' %}">Revisão</a></li>
+        {% elif canhoto.status_processamento == "ERRO" %}
+          <li class="breadcrumb-item"><a href="{% url 'canhotos:erros' %}">Erros</a></li>
+        {% else %}
+          <li class="breadcrumb-item"><a href="{% url 'canhotos:lista' %}">Canhotos</a></li>
+        {% endif %}
         <li class="breadcrumb-item active">Canhoto #{{ canhoto.pk }}</li>
       </ol>
     </nav>
   </div>
   <div class="col-auto d-flex gap-2">
     {% if prev_id %}
-    <a href="{% url 'canhotos:detalhe' prev_id %}" class="btn btn-outline-secondary btn-sm">
+    <a href="{% url 'canhotos:detalhe' prev_id %}" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-arrow-left me-1"></i>Anterior
     </a>
     {% endif %}
     {% if next_id %}
-    <a href="{% url 'canhotos:detalhe' next_id %}" class="btn btn-outline-secondary btn-sm">
+    <a href="{% url 'canhotos:detalhe' next_id %}" class="btn btn-sm btn-outline-secondary">
       Próximo<i class="bi bi-arrow-right ms-1"></i>
     </a>
     {% endif %}
-    <a href="{% url 'canhotos:lista' %}" class="btn btn-outline-primary btn-sm">
-      <i class="bi bi-list-ul me-1"></i>Voltar à lista
+    <a href="{% if canhoto.status_processamento == 'REVISAO' %}{% url 'canhotos:revisao' %}{% elif canhoto.status_processamento == 'ERRO' %}{% url 'canhotos:erros' %}{% else %}{% url 'canhotos:lista' %}{% endif %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-arrow-left me-1"></i>Voltar
     </a>
   </div>
 </div>
 
+<!-- Alerta divisória -->
 {% if canhoto.is_divisoria %}
-<div class="alert alert-info border-info shadow-sm">
-  <div class="d-flex align-items-start">
-    <i class="bi bi-layout-text-window-reverse fs-3 me-3"></i>
+<div class="alert alert-info border-0 shadow-sm mb-4">
+  <div class="d-flex align-items-start gap-3">
+    <i class="bi bi-layout-text-window-reverse fs-3 text-info flex-shrink-0"></i>
     <div class="flex-grow-1">
-      <h5 class="alert-heading mb-1">Folha Divisória detectada — {{ canhoto.get_tipo_pagina_display }}</h5>
-      <p class="mb-2">
-        Esta página é um índice de controle com vários números de NF, não um canhoto único.
+      <h5 class="alert-heading mb-1">Folha Divisória — {{ canhoto.get_tipo_pagina_display }}</h5>
+      <p class="mb-2 small">
+        Esta página é uma folha de controle com vários números de NF.
         {% if canhoto.tipo_pagina == "DIVISORIA_MISTA" %}
-          Foram detectados canhotos colados nela (extraídos abaixo). <strong>Valide manualmente.</strong>
+          Foram detectados canhotos colados nela. <strong>Valide manualmente.</strong>
         {% else %}
           Confira na imagem se todos os canhotos da lista foram recebidos.
         {% endif %}
       </p>
+
+      {% if canhoto.numeros_lista_items %}
       <div class="mb-3">
-        <strong>{{ canhoto.numeros_lista_items|length }} números detectados:</strong>
+        <strong class="small">{{ canhoto.numeros_lista_items|length }} números detectados:</strong>
         <div class="mt-1">
           {% for num in canhoto.numeros_lista_items %}
-            <span class="badge bg-light text-dark border me-1 mb-1">{{ num }}</span>
+            <span class="badge bg-light text-dark border me-1 mb-1 fs-6">{{ num }}</span>
           {% endfor %}
         </div>
       </div>
+      {% endif %}
 
       {% if canhoto.notas_atendidas.all %}
       <div class="mb-3">
-        <strong>Notas Fiscais já atribuídas a este canhoto:</strong>
+        <strong class="small">Notas já atribuídas:</strong>
         <div class="mt-1">
           {% for nota in canhoto.notas_atendidas.all %}
             <a href="{% url 'notas:detalhe' nota.pk %}" class="badge bg-success text-decoration-none me-1 mb-1">
@@ -78,17 +89,12 @@
       </div>
       {% endif %}
 
-      <div class="border rounded p-3 bg-white">
-        <h6 class="mb-2 small fw-semibold">
-          <i class="bi bi-card-checklist me-1"></i>Quais notas esses canhotos atendem?
-        </h6>
-        <p class="small text-muted mb-2">
-          Marque os números desta folha que correspondem a Notas Fiscais já recebidas
-          e clique em atribuir — todas serão vinculadas a este mesmo canhoto.
-        </p>
+      <div class="border rounded p-3 bg-white mt-2">
+        <h6 class="mb-1 small fw-bold"><i class="bi bi-card-checklist me-1"></i>Quais notas esses canhotos atendem?</h6>
+        <p class="small text-muted mb-2">Marque os números e clique em Atribuir.</p>
         <form method="post" action="{% url 'canhotos:atribuir_notas' canhoto.pk %}">
           {% csrf_token %}
-          <div class="row row-cols-2 row-cols-md-3 g-1 mb-2">
+          <div class="row row-cols-2 row-cols-md-4 g-1 mb-2">
             {% for num in canhoto.numeros_lista_items %}
             <div class="col">
               <div class="form-check">
@@ -99,11 +105,10 @@
             {% endfor %}
           </div>
           <div class="mb-2">
-            <label class="form-label small fw-semibold mb-1">Adicionar outras notas (separadas por vírgula)</label>
             <input type="text" name="numeros_texto" class="form-control form-control-sm"
-                   placeholder="Ex.: 12345, 12346, 12347" autocomplete="off">
+                   placeholder="Outros números separados por vírgula (ex.: 12345, 12346)" autocomplete="off">
           </div>
-          <button type="submit" class="btn btn-sm btn-success">
+          <button type="submit" class="btn btn-success btn-sm">
             <i class="bi bi-link-45deg me-1"></i>Atribuir Notas Selecionadas
           </button>
         </form>
@@ -113,182 +118,187 @@
 </div>
 {% endif %}
 
-<div class="row">
-  <!-- Canhoto Details -->
-  <div class="col-md-5">
-    <div class="card shadow-sm mb-4">
-      <div class="card-header bg-white">
-        <h5 class="mb-0"><i class="bi bi-file-earmark-pdf me-2"></i>Detalhes do Canhoto</h5>
+<!-- Status atual em destaque -->
+<div class="mb-3 d-flex align-items-center gap-2">
+  {% if canhoto.status_processamento == "SUCESSO" %}
+    <span class="status-pill status-pill-sucesso"><i class="bi bi-check-circle-fill"></i>Processado com sucesso</span>
+  {% elif canhoto.status_processamento == "ERRO" %}
+    <span class="status-pill status-pill-erro"><i class="bi bi-x-circle-fill"></i>Erro no processamento</span>
+  {% elif canhoto.status_processamento == "REVISAO" %}
+    <span class="status-pill status-pill-revisao"><i class="bi bi-eye-fill"></i>Aguardando revisão manual</span>
+  {% elif canhoto.status_processamento == "PROCESSANDO" %}
+    <span class="status-pill status-pill-processando"><i class="bi bi-arrow-repeat"></i>Processando...</span>
+  {% else %}
+    <span class="status-pill status-pill-pendente"><i class="bi bi-hourglass"></i>Pendente</span>
+  {% endif %}
+  {% if canhoto.nota %}
+    <span class="status-pill status-pill-sucesso"><i class="bi bi-link-45deg"></i>Vinculado à NF {{ canhoto.nota.numero }}</span>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+
+  <!-- COLUNA ESQUERDA: Ações -->
+  <div class="col-md-5 col-lg-4">
+
+    <!-- Detalhes -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-white py-2">
+        <span class="fw-semibold"><i class="bi bi-info-circle me-1"></i>Informações</span>
       </div>
-      <div class="card-body">
-        <dl class="row mb-0">
-          <dt class="col-sm-5">ID</dt>
-          <dd class="col-sm-7">#{{ canhoto.pk }}</dd>
+      <div class="card-body py-2 px-3">
+        <dl class="row mb-0 small">
+          <dt class="col-5 text-muted">ID</dt>
+          <dd class="col-7">#{{ canhoto.pk }}</dd>
 
           {% if canhoto.pagina_numero %}
-          <dt class="col-sm-5">Página no PDF</dt>
-          <dd class="col-sm-7">{{ canhoto.pagina_numero }}</dd>
+          <dt class="col-5 text-muted">Página</dt>
+          <dd class="col-7">{{ canhoto.pagina_numero }}</dd>
           {% endif %}
 
-          <dt class="col-sm-5">Arquivo</dt>
-          <dd class="col-sm-7">
-            {% if canhoto.arquivo %}
-              <a href="{% url 'canhotos:arquivo' canhoto.pk %}" target="_blank">
-                <i class="bi bi-file-earmark-arrow-down me-1"></i>{{ canhoto.nome_arquivo }}
-              </a>
-            {% else %}
-              <span class="text-muted">Arquivo não disponível</span>
-            {% endif %}
-          </dd>
-
-          <dt class="col-sm-5">Número Detectado</dt>
-          <dd class="col-sm-7">
-            {{ canhoto.numero_detectado|default:"Não detectado" }}
-            {% if canhoto.confianca_deteccao %}
+          <dt class="col-5 text-muted">Nº Detectado</dt>
+          <dd class="col-7">
+            {% if canhoto.numero_detectado %}
+              <code>{{ canhoto.numero_detectado }}</code>
               {% if canhoto.confianca_deteccao == "ALTA" %}
-                <span class="badge bg-success ms-1">Alta confiança</span>
+                <span class="badge bg-success ms-1">Alta</span>
               {% elif canhoto.confianca_deteccao == "MEDIA" %}
-                <span class="badge bg-warning text-dark ms-1">Média confiança</span>
-              {% else %}
-                <span class="badge bg-danger ms-1">Baixa confiança</span>
+                <span class="badge bg-warning text-dark ms-1">Média</span>
+              {% elif canhoto.confianca_deteccao == "BAIXA" %}
+                <span class="badge bg-danger ms-1">Baixa</span>
               {% endif %}
+            {% else %}
+              <span class="text-muted">Não detectado</span>
             {% endif %}
           </dd>
 
           {% if canhoto.numero_barcode %}
-          <dt class="col-sm-5">Número via Barcode</dt>
-          <dd class="col-sm-7">
-            <i class="bi bi-upc-scan me-1 text-success"></i>
-            <code>{{ canhoto.numero_barcode }}</code>
+          <dt class="col-5 text-muted">Barcode</dt>
+          <dd class="col-7">
+            <i class="bi bi-upc-scan text-success me-1"></i><code>{{ canhoto.numero_barcode }}</code>
           </dd>
           {% endif %}
 
-          <dt class="col-sm-5">Status OCR</dt>
-          <dd class="col-sm-7">
-            {% if canhoto.status_processamento == "SUCESSO" %}
-              <span class="badge-status badge-finalizado">Sucesso</span>
-            {% elif canhoto.status_processamento == "ERRO" %}
-              <span class="badge-status badge-erro">Erro</span>
-            {% elif canhoto.status_processamento == "PROCESSANDO" %}
-              <span class="badge bg-primary">Processando</span>
-            {% elif canhoto.status_processamento == "REVISAO" %}
-              <span class="badge bg-info text-dark"><i class="bi bi-eye me-1"></i>Revisão Manual</span>
-            {% else %}
-              <span class="badge bg-secondary">Pendente</span>
-            {% endif %}
-          </dd>
+          <dt class="col-5 text-muted">Data Rec.</dt>
+          <dd class="col-7">{{ canhoto.data_recebimento|date:"d/m/Y"|default:"—" }}</dd>
+
+          <dt class="col-5 text-muted">Atualizado</dt>
+          <dd class="col-7">{{ canhoto.updated_at|date:"d/m/Y H:i" }}</dd>
 
           {% if canhoto.erro_mensagem %}
-          <dt class="col-sm-5">Erro</dt>
-          <dd class="col-sm-7">
-            <span class="text-danger small">{{ canhoto.erro_mensagem }}</span>
-          </dd>
+          <dt class="col-5 text-muted text-danger">Erro</dt>
+          <dd class="col-7"><span class="text-danger small">{{ canhoto.erro_mensagem }}</span></dd>
           {% endif %}
-
-          <dt class="col-sm-5">Data de Recebimento</dt>
-          <dd class="col-sm-7">{{ canhoto.data_recebimento|date:"d/m/Y"|default:"—" }}</dd>
-
-          <dt class="col-sm-5">Nota Vinculada</dt>
-          <dd class="col-sm-7">
-            {% if canhoto.nota %}
-              <a href="{% url 'notas:detalhe' canhoto.nota.pk %}" class="text-success fw-semibold">
-                <i class="bi bi-check-circle-fill me-1"></i>NF {{ canhoto.nota.numero }}
-              </a>
-            {% else %}
-              <span class="text-muted">Não vinculado</span>
-            {% endif %}
-          </dd>
-
-          <dt class="col-sm-5">Criado em</dt>
-          <dd class="col-sm-7">{{ canhoto.created_at|date:"d/m/Y H:i:s" }}</dd>
-
-          <dt class="col-sm-5">Atualizado em</dt>
-          <dd class="col-sm-7">{{ canhoto.updated_at|date:"d/m/Y H:i:s" }}</dd>
         </dl>
       </div>
     </div>
 
-    <!-- Actions -->
-    <div class="card shadow-sm mb-4">
-      <div class="card-header bg-white">
-        <h6 class="mb-0 text-muted"><i class="bi bi-lightning me-1"></i>Ações</h6>
+    <!-- AÇÕES -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-white py-2">
+        <span class="fw-semibold"><i class="bi bi-lightning me-1"></i>Ações</span>
       </div>
-      <div class="card-body">
-        <!-- Reprocessar OCR -->
-        <form method="post" action="{% url 'canhotos:reprocessar' canhoto.pk %}" class="mb-3">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-warning btn-sm w-100"
-                  onclick="return confirm('Reprocessar OCR neste canhoto?')">
-            <i class="bi bi-arrow-clockwise me-1"></i>Reprocessar OCR
-          </button>
-        </form>
+      <div class="card-body p-3">
 
-        <!-- Excluir Canhoto -->
-        <form method="post" action="{% url 'canhotos:excluir' canhoto.pk %}" class="mb-3">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-outline-danger btn-sm w-100"
-                  onclick="return confirm('Excluir este canhoto permanentemente? Esta ação não pode ser desfeita.')">
-            <i class="bi bi-trash me-1"></i>Excluir Canhoto
-          </button>
-        </form>
-
-        <!-- Corrigir Número Manualmente -->
-        <div class="border rounded p-3 bg-light mb-3">
-          <h6 class="mb-2 small fw-semibold">
-            <i class="bi bi-pencil-square me-1"></i>Inserir/Corrigir Número
-          </h6>
-          <form method="post" action="{% url 'canhotos:corrigir' canhoto.pk %}" class="d-flex gap-2">
-            {% csrf_token %}
-            {{ corrigir_form.numero_detectado }}
-            <button type="submit" class="btn btn-outline-success btn-sm flex-shrink-0">
-              <i class="bi bi-check-lg"></i> Validar
-            </button>
-          </form>
-          <small class="text-muted">
-            Um número valida normalmente (Alta confiança). <strong>Vários números separados
-            por vírgula</strong> transformam este canhoto numa divisória que atende várias notas.
-          </small>
-        </div>
-
-        <!-- Vincular Manualmente -->
+        <!-- 1. Inserir / Corrigir Número -->
         {% if not canhoto.nota %}
-        <div class="border rounded p-3 bg-light">
-          <h6 class="mb-2 small fw-semibold">
-            <i class="bi bi-link-45deg me-1"></i>Vincular Manualmente
-          </h6>
+        <div class="action-section">
+          <div class="action-section-title">
+            <i class="bi bi-pencil me-1"></i>Inserir / Corrigir Número da NF
+          </div>
+          <form method="post" action="{% url 'canhotos:corrigir' canhoto.pk %}">
+            {% csrf_token %}
+            <div class="d-flex gap-2 mb-1">
+              {{ corrigir_form.numero_detectado }}
+              <button type="submit" class="btn btn-success btn-sm flex-shrink-0">
+                <i class="bi bi-check-lg me-1"></i>Salvar e Vincular
+              </button>
+            </div>
+            <div class="text-muted" style="font-size:0.78rem;">
+              Digite o número e clique em Salvar — o sistema tentará vincular automaticamente.
+              <br>Para múltiplos números, separe com vírgula.
+            </div>
+          </form>
+        </div>
+        {% endif %}
+
+        <!-- 2. Vincular Manualmente -->
+        {% if not canhoto.nota %}
+        <div class="action-section">
+          <div class="action-section-title">
+            <i class="bi bi-link-45deg me-1"></i>Vincular Diretamente a uma NF
+          </div>
           <form method="post" action="{% url 'canhotos:vincular' canhoto.pk %}" id="vincular-form">
             {% csrf_token %}
             {{ vincular_form.nota_id }}
             <div class="position-relative mb-2">
               <input type="text" id="busca-nota" class="form-control form-control-sm"
-                     placeholder="Pesquisar pelo número da NF..." autocomplete="off">
-              <div id="busca-resultados" class="list-group position-absolute w-100 shadow-sm"
-                   style="z-index: 1000; max-height: 220px; overflow-y: auto; display: none;"></div>
+                     placeholder="Digitar número da NF..." autocomplete="off">
+              <div id="busca-resultados" class="list-group position-absolute w-100 shadow"
+                   style="z-index:1000; max-height:200px; overflow-y:auto; display:none;"></div>
             </div>
-            <div id="nota-selecionada" class="alert alert-info py-2 px-3 mb-2" style="display: none;"></div>
+            <div id="nota-selecionada" class="alert alert-info py-1 px-2 mb-2 small" style="display:none;"></div>
             <button type="submit" class="btn btn-primary btn-sm w-100" id="btn-vincular" disabled>
-              <i class="bi bi-link-45deg me-1"></i>Vincular à Nota Fiscal
+              <i class="bi bi-link-45deg me-1"></i>Vincular à Nota Fiscal Selecionada
             </button>
           </form>
         </div>
         {% else %}
-        <div class="alert alert-success mb-0 py-2">
-          <i class="bi bi-check-circle me-1"></i>
-          <small>Canhoto já está vinculado à NF {{ canhoto.nota.numero }}.</small>
+        <div class="action-section">
+          <div class="alert alert-success py-2 px-3 mb-0 small">
+            <i class="bi bi-check-circle-fill me-1"></i>
+            Vinculado à <a href="{% url 'notas:detalhe' canhoto.nota.pk %}" class="fw-bold text-success">NF {{ canhoto.nota.numero }}</a>
+          </div>
         </div>
         {% endif %}
+
+        <!-- 3. Reprocessar OCR -->
+        <div class="action-section">
+          <div class="action-section-title">
+            <i class="bi bi-arrow-clockwise me-1"></i>Tentar Leitura Automática Novamente
+          </div>
+          <form method="post" action="{% url 'canhotos:reprocessar' canhoto.pk %}" id="form-reprocessar">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-warning btn-sm w-100"
+                    data-confirm="O sistema vai tentar reler o arquivo automaticamente. Continuar?"
+                    data-confirm-danger="false"
+                    data-confirm-label="Reprocessar"
+                    data-form="form-reprocessar">
+              <i class="bi bi-arrow-clockwise me-1"></i>Reprocessar OCR
+            </button>
+          </form>
+        </div>
+
+        <!-- 4. Excluir -->
+        <div class="action-section">
+          <div class="action-section-title text-danger">
+            <i class="bi bi-trash me-1"></i>Excluir este canhoto
+          </div>
+          <form method="post" action="{% url 'canhotos:excluir' canhoto.pk %}" id="form-excluir">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm w-100"
+                    data-confirm="Excluir permanentemente o canhoto #{{ canhoto.pk }}? Esta ação não pode ser desfeita."
+                    data-confirm-label="Excluir"
+                    data-form="form-excluir">
+              <i class="bi bi-trash me-1"></i>Excluir Canhoto
+            </button>
+          </form>
+        </div>
+
       </div>
     </div>
+
   </div>
 
-  <!-- File Preview + OCR Text -->
-  <div class="col-md-7">
-    <!-- Pré-visualização -->
-    <div class="card shadow-sm mb-4">
-      <div class="card-header bg-white d-flex align-items-center justify-content-between">
-        <h5 class="mb-0"><i class="bi bi-eye me-2"></i>Pré-visualização do Arquivo</h5>
+  <!-- COLUNA DIREITA: Preview + OCR -->
+  <div class="col-md-7 col-lg-8">
+
+    <!-- Preview do Arquivo -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-white py-2 d-flex align-items-center justify-content-between">
+        <span class="fw-semibold"><i class="bi bi-eye me-1"></i>Visualização do Canhoto</span>
         {% if canhoto.arquivo %}
-        <a href="{% url 'canhotos:arquivo' canhoto.pk %}" target="_blank" class="btn btn-sm btn-outline-primary">
+        <a href="{% url 'canhotos:arquivo' canhoto.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary">
           <i class="bi bi-box-arrow-up-right me-1"></i>Abrir em nova aba
         </a>
         {% endif %}
@@ -297,70 +307,49 @@
         {% if canhoto.arquivo %}
           {% if canhoto.is_pdf %}
             <iframe src="{% url 'canhotos:arquivo' canhoto.pk %}"
-                    width="100%"
-                    height="620"
-                    style="border: none; border-radius: 0 0 4px 4px; display: block;"
+                    width="100%" height="580"
+                    style="border:none; border-radius:0 0 4px 4px; display:block;"
                     title="Canhoto PDF"></iframe>
           {% else %}
             <div class="p-3 text-center">
               <img src="{% url 'canhotos:arquivo' canhoto.pk %}"
                    alt="Imagem do canhoto"
                    class="img-fluid rounded border"
-                   style="max-height: 600px; cursor: zoom-in;"
+                   style="max-height:560px; cursor:zoom-in;"
                    onclick="window.open(this.src,'_blank')">
             </div>
           {% endif %}
         {% else %}
-          <div class="text-center py-5 text-muted">
-            <i class="bi bi-file-earmark-x display-4"></i>
-            <p class="mt-2">Arquivo não disponível para pré-visualização.</p>
+          <div class="empty-state">
+            <i class="bi bi-file-earmark-x"></i>
+            <p>Arquivo não disponível para visualização.</p>
           </div>
         {% endif %}
       </div>
     </div>
 
     <!-- Texto extraído pelo OCR -->
-    <div class="card shadow-sm mb-4">
-      <div class="card-header bg-white d-flex align-items-center justify-content-between">
-        <h6 class="mb-0"><i class="bi bi-file-text me-2"></i>Texto Extraído pelo OCR</h6>
-        {% if canhoto.texto_ocr %}
-        <button class="btn btn-sm btn-outline-secondary"
-                onclick="var el=document.getElementById('ocr-text'); el.style.display = el.style.display==='none' ? 'block' : 'none';">
-          <i class="bi bi-chevron-down"></i> Expandir/Recolher
-        </button>
+    {% if canhoto.texto_ocr %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-white py-2">
+        <span class="fw-semibold"><i class="bi bi-file-text me-1"></i>Texto extraído pelo OCR</span>
+        {% if canhoto.numero_detectado %}
+          <span class="badge bg-success ms-2">NF {{ canhoto.numero_detectado }} detectada</span>
+        {% else %}
+          <span class="badge bg-warning text-dark ms-2">Número não detectado</span>
         {% endif %}
       </div>
       <div class="card-body p-0">
-        {% if canhoto.texto_ocr %}
-          {% if canhoto.numero_detectado %}
-          <div class="alert alert-success rounded-0 mb-0 py-2 px-3 border-0">
-            <i class="bi bi-check-circle-fill me-1"></i>
-            Número detectado: <strong>{{ canhoto.numero_detectado }}</strong>
-          </div>
-          {% else %}
-          <div class="alert alert-warning rounded-0 mb-0 py-2 px-3 border-0">
-            <i class="bi bi-exclamation-triangle me-1"></i>
-            Nenhum número de nota foi encontrado no texto abaixo. Verifique manualmente.
-          </div>
-          {% endif %}
-          <div id="ocr-text" style="display: none;">
-            <pre class="p-3 mb-0 bg-light rounded-bottom"
-                 style="font-size: 0.78rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;">{{ canhoto.texto_ocr }}</pre>
-          </div>
-        {% elif canhoto.status_processamento == "ERRO" %}
-          <div class="text-center py-4 text-danger">
-            <i class="bi bi-x-octagon fs-4"></i>
-            <p class="mt-2 mb-0 small">OCR falhou — nenhum texto disponível.<br>
-            Use o botão <strong>Reprocessar OCR</strong> para tentar novamente.</p>
-          </div>
-        {% else %}
-          <div class="text-center py-4 text-muted">
-            <i class="bi bi-hourglass-split fs-4"></i>
-            <p class="mt-2 mb-0 small">Aguardando processamento OCR.</p>
-          </div>
-        {% endif %}
+        <div class="ocr-text-panel">{{ canhoto.texto_ocr }}</div>
       </div>
     </div>
+    {% elif canhoto.status_processamento == "ERRO" %}
+    <div class="alert alert-danger mt-2 py-2 px-3">
+      <i class="bi bi-x-octagon me-1"></i>
+      OCR falhou — nenhum texto disponível. Use <strong>Reprocessar OCR</strong> para tentar novamente.
+    </div>
+    {% endif %}
+
   </div>
 </div>
 {% endblock %}
@@ -377,7 +366,7 @@
   var buscarUrl = "{% url 'notas:buscar_api' %}";
   var debounceTimer = null;
 
-  function limparResultados() {
+  function limpar() {
     resultados.innerHTML = '';
     resultados.style.display = 'none';
   }
@@ -385,27 +374,27 @@
   function buscar(termo) {
     fetch(buscarUrl + '?q=' + encodeURIComponent(termo), { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
-      .then(function (data) { renderResultados(data.resultados); })
-      .catch(limparResultados);
-  }
-
-  function renderResultados(lista) {
-    if (!lista.length) {
-      resultados.innerHTML = '<div class="list-group-item small text-muted">Nenhuma nota encontrada.</div>';
-      resultados.style.display = 'block';
-      return;
-    }
-    resultados.innerHTML = lista.map(function (nota) {
-      var statusBadge = nota.vinculada
-        ? '<span class="badge bg-secondary ms-1">já vinculada</span>'
-        : (nota.status === 'FINALIZADO' ? '<span class="badge bg-success ms-1">Finalizado</span>' : '<span class="badge bg-warning text-dark ms-1">Aguardando</span>');
-      return '<button type="button" class="list-group-item list-group-item-action small" ' +
-        'data-id="' + nota.id + '" data-numero="' + nota.numero + '">' +
-        'NF ' + nota.numero + statusBadge +
-        (nota.destinatario ? '<br><span class="text-muted">' + nota.destinatario + '</span>' : '') +
-        '</button>';
-    }).join('');
-    resultados.style.display = 'block';
+      .then(function (data) {
+        if (!data.resultados.length) {
+          resultados.innerHTML = '<div class="list-group-item small text-muted">Nenhuma nota encontrada.</div>';
+          resultados.style.display = 'block';
+          return;
+        }
+        resultados.innerHTML = data.resultados.map(function (nota) {
+          var badge = nota.vinculada
+            ? '<span class="badge bg-secondary ms-1">já vinculada</span>'
+            : (nota.status === 'FINALIZADO'
+              ? '<span class="badge bg-success ms-1">Finalizado</span>'
+              : '<span class="badge bg-warning text-dark ms-1">Aguardando</span>');
+          return '<button type="button" class="list-group-item list-group-item-action small" ' +
+            'data-id="' + nota.id + '" data-numero="' + nota.numero + '">' +
+            '<strong>NF ' + nota.numero + '</strong>' + badge +
+            (nota.destinatario ? '<br><span class="text-muted">' + nota.destinatario + '</span>' : '') +
+            '</button>';
+        }).join('');
+        resultados.style.display = 'block';
+      })
+      .catch(limpar);
   }
 
   input.addEventListener('input', function () {
@@ -414,10 +403,7 @@
     hiddenId.value = '';
     btnVincular.disabled = true;
     selecionada.style.display = 'none';
-    if (termo.length < 2) {
-      limparResultados();
-      return;
-    }
+    if (termo.length < 2) { limpar(); return; }
     debounceTimer = setTimeout(function () { buscar(termo); }, 300);
   });
 
@@ -425,15 +411,15 @@
     var btn = e.target.closest('button[data-id]');
     if (!btn) return;
     hiddenId.value = btn.getAttribute('data-id');
-    selecionada.textContent = 'Selecionada: NF ' + btn.getAttribute('data-numero');
+    selecionada.innerHTML = '<i class="bi bi-check-circle-fill me-1 text-success"></i>Selecionada: <strong>NF ' + btn.getAttribute('data-numero') + '</strong>';
     selecionada.style.display = 'block';
     btnVincular.disabled = false;
-    limparResultados();
+    limpar();
     input.value = btn.getAttribute('data-numero');
   });
 
   document.addEventListener('click', function (e) {
-    if (e.target !== input) limparResultados();
+    if (e.target !== input) limpar();
   });
 })();
 </script>
