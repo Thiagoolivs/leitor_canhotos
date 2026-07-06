@@ -85,9 +85,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'apps.canhotos.context_processors.revisao_pendente_count',
-                'apps.canhotos.context_processors.erro_count',
-                'apps.canhotos.context_processors.processando_count',
+                'apps.canhotos.context_processors.contadores_navbar',
             ],
         },
     },
@@ -240,6 +238,12 @@ SCANNER_ERROR_DIR = config('SCANNER_ERROR_DIR', default='/erro')
 # automaticamente vinculados à nota fiscal correspondente sem revisão humana.
 # Canhotos com confiança BAIXA vão para REVISAO em vez de auto-vincular.
 AUTO_VINCULAR_ALTA_CONFIANCA = config('AUTO_VINCULAR_ALTA_CONFIANCA', default=True, cast=bool)
+
+# Validação cruzada: um número lido com confiança BAIXA que bate exatamente com
+# uma nota AGUARDANDO_CANHOTO na base é promovido a MEDIA e auto-vinculado —
+# é a mesma verificação que o operador faria na revisão manual. Reduz
+# drasticamente a fila de REVISAO sem custo de API.
+VALIDAR_PELA_BASE_DE_NOTAS = config('VALIDAR_PELA_BASE_DE_NOTAS', default=True, cast=bool)
 
 # ==============================================================================
 # AI FALLBACK (Groq / Llama)

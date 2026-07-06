@@ -75,7 +75,20 @@ class NotaService:
             status=status,
         )
         self.logger.info('NotaFiscal criada via NotaService: id=%s numero=%s', nota.id, nota.numero)
+        self._retro_conciliar(nota)
         return nota
+
+    def _retro_conciliar(self, nota) -> None:
+        """
+        Após registrar uma nota, procura canhotos que já esperavam por ela
+        (em ERRO/REVISAO/PENDENTE) e concilia automaticamente. Falha silenciosa:
+        a criação da nota nunca deve ser bloqueada por isso.
+        """
+        try:
+            from services.conciliacao_service import ConciliacaoService
+            ConciliacaoService().conciliar_pendentes_para_nota(nota)
+        except Exception as exc:
+            self.logger.warning('Retro-conciliação ignorada para NF %s: %s', nota.numero, exc)
 
     def importar_lote(self, lista_notas: list) -> dict:
         """
@@ -200,6 +213,7 @@ class NotaService:
             status=StatusNota.AGUARDANDO_CANHOTO,
         )
         self.logger.info('NotaFiscal criada automaticamente: numero=%s id=%s', numero_formatado, nota.id)
+        self._retro_conciliar(nota)
         return nota
 
     def buscar_nota(self, numero: str) -> Optional[NotaFiscal]:

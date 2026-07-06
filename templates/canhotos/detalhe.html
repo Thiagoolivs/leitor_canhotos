@@ -245,10 +245,37 @@
         </div>
         {% else %}
         <div class="action-section">
-          <div class="alert alert-success py-2 px-3 mb-0 small">
+          <div class="alert alert-success py-2 px-3 mb-2 small">
             <i class="bi bi-check-circle-fill me-1"></i>
             Vinculado à <a href="{% url 'notas:detalhe' canhoto.nota.pk %}" class="fw-bold text-success">NF {{ canhoto.nota.numero }}</a>
           </div>
+          <form method="post" action="{% url 'canhotos:desvincular' canhoto.pk %}" id="form-desvincular">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm w-100"
+                    data-confirm="Desfazer o vínculo com a NF {{ canhoto.nota.numero }}? A nota volta para Aguardando Canhoto."
+                    data-confirm-label="Desvincular"
+                    data-form="form-desvincular">
+              <i class="bi bi-x-circle me-1"></i>Desvincular (vínculo errado)
+            </button>
+          </form>
+        </div>
+        {% endif %}
+
+        {% if canhoto.is_divisoria and canhoto.status_processamento == "REVISAO" %}
+        <div class="action-section">
+          <div class="action-section-title">
+            <i class="bi bi-check2-all me-1"></i>Encerrar revisão desta divisória
+          </div>
+          <form method="post" action="{% url 'canhotos:concluir_revisao' canhoto.pk %}" id="form-concluir-detalhe">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success btn-sm w-100"
+                    data-confirm="Concluir a revisão? Use quando você já conferiu a folha, mesmo que alguns números não tenham nota no sistema."
+                    data-confirm-danger="false"
+                    data-confirm-label="Concluir"
+                    data-form="form-concluir-detalhe">
+              <i class="bi bi-check2-all me-1"></i>Concluir Revisão
+            </button>
+          </form>
         </div>
         {% endif %}
 

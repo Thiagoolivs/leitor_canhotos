@@ -18,7 +18,9 @@ urlpatterns = [
     path('<int:pk>/arquivo/', views.ServirArquivoCanhotoView.as_view(), name='arquivo'),
     path('<int:pk>/reprocessar/', views.ReprocessarOCRView.as_view(), name='reprocessar'),
     path('<int:pk>/vincular/', views.VincularManualView.as_view(), name='vincular'),
+    path('<int:pk>/desvincular/', views.DesvincularView.as_view(), name='desvincular'),
     path('<int:pk>/corrigir/', views.CorrigirNumeroView.as_view(), name='corrigir'),
+    path('<int:pk>/concluir-revisao/', views.ConcluirRevisaoDivisoriaView.as_view(), name='concluir_revisao'),
     path('<int:pk>/excluir/', views.ExcluirCanhotoView.as_view(), name='excluir'),
     path('<int:pk>/atribuir-notas/', views.AtribuirNotasDivisoriaView.as_view(), name='atribuir_notas'),
 ]

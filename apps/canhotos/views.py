@@ -162,6 +162,18 @@ class ServirArquivoCanhotoView(View):
         return response
 
 
+def _redirect_pos_acao(request, fallback_url):
+    """
+    Redireciona para o `next` enviado no form (fluxo fluido: voltar direto
+    para a lista de Revisão/Erros) ou para o fallback. Só aceita URLs internas.
+    """
+    from django.utils.http import url_has_allowed_host_and_scheme
+    next_url = request.POST.get('next') or request.GET.get('next') or ''
+    if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        return redirect(next_url)
+    return redirect(fallback_url)
+
+
 class ReprocessarOCRView(View):
     """
     POST-only view that enqueues a Celery task to re-run OCR on an existing canhoto.
@@ -184,7 +196,49 @@ class ReprocessarOCRView(View):
         except Exception as exc:
             messages.error(request, f'Erro ao enfileirar reprocessamento: {exc}')
             logger.exception('Erro ao enfileirar reprocessamento para canhoto %s', pk)
-        return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))
+        return _redirect_pos_acao(request, reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+
+class DesvincularView(View):
+    """
+    POST-only: desfaz o vínculo canhoto ↔ nota. A nota volta para
+    AGUARDANDO_CANHOTO e o canhoto para PENDENTE. Antes desta view não havia
+    nenhum caminho na interface para o operador corrigir um vínculo errado.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        from services.conciliacao_service import ConciliacaoService
+        try:
+            ConciliacaoService().desvincular(canhoto.id)
+            messages.success(request, f'Canhoto {canhoto.id} desvinculado. A nota voltou para "Aguardando Canhoto".')
+            logger.info('Desvínculo manual: canhoto_id=%s', canhoto.id)
+        except Exception as exc:
+            messages.error(request, f'Erro ao desvincular: {exc}')
+            logger.exception('Erro ao desvincular canhoto %s', pk)
+        return _redirect_pos_acao(request, reverse('canhotos:detalhe', kwargs={'pk': pk}))
+
+
+class ConcluirRevisaoDivisoriaView(View):
+    """
+    POST-only: o operador confirma que conferiu a folha divisória e encerra a
+    revisão (SUCESSO), mesmo que nem todos os números da lista tenham nota no
+    sistema. Sem isso, divisórias com números sem nota cadastrada ficariam
+    presas em REVISAO para sempre.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        canhoto = get_object_or_404(Canhoto, pk=pk)
+        from services.conciliacao_service import ConciliacaoService
+        try:
+            ConciliacaoService().concluir_revisao_divisoria(canhoto.id)
+            messages.success(request, f'Revisão da divisória {canhoto.id} concluída.')
+        except Exception as exc:
+            messages.error(request, f'Erro ao concluir revisão: {exc}')
+            logger.exception('Erro ao concluir revisão da divisória %s', pk)
+        return _redirect_pos_acao(request, reverse('canhotos:revisao'))
 
 
 class VincularManualView(View):
@@ -233,11 +287,18 @@ class ExcluirCanhotoView(View):
         canhoto = get_object_or_404(Canhoto, pk=pk)
         canhoto_id = canhoto.id
 
+        from apps.notas.models import StatusNota
+
         nota = canhoto.nota
         if nota is not None:
-            from apps.notas.models import StatusNota
             nota.status = StatusNota.AGUARDANDO_CANHOTO
             nota.save(update_fields=['status', 'updated_at'])
+
+        # Divisória: reverte também as notas finalizadas via M2M notas_atendidas,
+        # senão ficam FINALIZADO para sempre sem nenhum canhoto que as comprove.
+        for nota_m2m in canhoto.notas_atendidas.all():
+            nota_m2m.status = StatusNota.AGUARDANDO_CANHOTO
+            nota_m2m.save(update_fields=['status', 'updated_at'])
 
         if canhoto.arquivo:
             try:
@@ -452,15 +513,18 @@ class CorrigirNumeroView(View):
                 f'Canhoto {canhoto.id} vinculado com sucesso à NF {numero}!',
             )
             logger.info('Conciliação manual bem-sucedida: canhoto_id=%s nf=%s', canhoto.id, numero)
+            # Sucesso: honra o next (volta direto à lista de Revisão/Erros)
+            return _redirect_pos_acao(request, reverse('canhotos:detalhe', kwargs={'pk': pk}))
         except Exception as exc:
             canhoto.status_processamento = StatusProcessamento.REVISAO
-            canhoto.erro_mensagem = f'Número {numero} salvo, mas não foi encontrado no sistema: {exc}'
+            canhoto.erro_mensagem = f'Número {numero} confirmado pelo operador, mas a vinculação falhou: {exc}'
             canhoto.save(update_fields=['status_processamento', 'erro_mensagem', 'updated_at'])
             messages.warning(
                 request,
-                f'Número {numero} salvo, mas a NF não foi encontrada no sistema. '
+                f'Número {numero} salvo, mas não foi possível vincular: {exc} '
                 'Use "Vincular Manualmente" para selecionar a nota correta.',
             )
             logger.warning('Conciliação após correção falhou: canhoto_id=%s nf=%s erro=%s', canhoto.id, numero, exc)
 
+        # Falha: leva ao detalhe, onde estão as ferramentas de correção
         return redirect(reverse('canhotos:detalhe', kwargs={'pk': pk}))

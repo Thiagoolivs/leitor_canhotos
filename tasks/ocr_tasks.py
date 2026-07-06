@@ -135,26 +135,45 @@ def processar_arquivo(self, caminho_arquivo: str, tipo: str) -> dict:
                         return {'status': 'erro', 'motivo': 'numero_nao_detectado'}
 
                 confianca = resultado_ocr.get('confianca', 'BAIXA')
-                if getattr(settings, 'AUTO_VINCULAR_ALTA_CONFIANCA', True) and confianca == 'BAIXA':
-                    # Fallback: tenta IA antes de mandar para revisão manual
-                    resultado_ia = _tentar_fallback_ia(resultado_ocr.get('texto', ''), numero_nota)
-                    if resultado_ia:
-                        numero_nota = resultado_ia['numero']
+                if confianca == 'BAIXA':
+                    # 1º: validação cruzada com a base — se o número bate com uma
+                    # nota pendente, é a mesma confirmação que o operador faria.
+                    if _nota_pendente_para(numero_nota):
                         confianca = 'MEDIA'
-                        CanhotoRepository().atualizar(canhoto, numero_detectado=numero_nota)
                         _logger.info(
-                            '[CANHOTO] IA recuperou NF=%s (motivo: %s) → MEDIA',
-                            numero_nota, resultado_ia.get('motivo', ''),
+                            '[CANHOTO] NF=%s validada pela base de notas (pendente) → MEDIA',
+                            numero_nota,
                         )
                     else:
-                        from apps.canhotos.models import StatusProcessamento as _SP
-                        CanhotoRepository().atualizar(
-                            canhoto,
-                            status_processamento=_SP.REVISAO,
-                            erro_mensagem=f'Confiança baixa ({confianca}) — confirmar número manualmente.',
-                        )
-                        _logger.info('[CANHOTO] Confiança BAIXA → REVISAO: NF=%s', numero_nota)
-                        return {'status': 'revisao', 'motivo': 'confianca_baixa', 'numero': numero_nota}
+                        # 2º: fallback IA antes de mandar para revisão manual
+                        resultado_ia = _tentar_fallback_ia(resultado_ocr.get('texto', ''), numero_nota)
+                        if resultado_ia:
+                            numero_nota = resultado_ia['numero']
+                            confianca = 'MEDIA'
+                            CanhotoRepository().atualizar(canhoto, numero_detectado=numero_nota)
+                            _logger.info(
+                                '[CANHOTO] IA recuperou NF=%s (motivo: %s) → MEDIA',
+                                numero_nota, resultado_ia.get('motivo', ''),
+                            )
+                        else:
+                            from apps.canhotos.models import StatusProcessamento as _SP
+                            CanhotoRepository().atualizar(
+                                canhoto,
+                                status_processamento=_SP.REVISAO,
+                                erro_mensagem='Confiança baixa — número não confirmado pela base nem pela IA.',
+                            )
+                            _logger.info('[CANHOTO] Confiança BAIXA → REVISAO: NF=%s', numero_nota)
+                            return {'status': 'revisao', 'motivo': 'confianca_baixa', 'numero': numero_nota}
+
+                if not getattr(settings, 'AUTO_VINCULAR_ALTA_CONFIANCA', True):
+                    # Auto-vinculação desligada: toda vinculação exige confirmação manual.
+                    from apps.canhotos.models import StatusProcessamento as _SP
+                    CanhotoRepository().atualizar(
+                        canhoto,
+                        status_processamento=_SP.REVISAO,
+                        erro_mensagem='Auto-vinculação desabilitada — confirmar manualmente.',
+                    )
+                    return {'status': 'revisao', 'motivo': 'auto_vincular_off', 'numero': numero_nota}
 
                 conciliacao_service = ConciliacaoService()
                 try:
@@ -230,13 +249,6 @@ def _copiar_para_media(caminho_arquivo: str) -> str:
     logger.info('Arquivo copiado para media: %s -> %s', origem.name, destino)
 
     return str(Path('canhotos') / nome_destino)
-
-
-def _salvar_texto_ocr(canhoto, texto: str) -> None:
-    """Helper: persist extracted OCR text on the Canhoto record."""
-    if texto:
-        from repositories.canhoto_repository import CanhotoRepository
-        CanhotoRepository().atualizar(canhoto, texto_ocr=texto)
 
 
 def _extrair_numero_pagina_do_nome(nome_arquivo: str) -> Optional[int]:
@@ -431,6 +443,32 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
                     logger.warning(
                         '[DIVISÓRIA] Auto-vinculação falhou NF %s: %s', numero, exc,
                     )
+            elif auto_vincular and _nota_pendente_para(numero):
+                # Confiança BAIXA mas o número bate com nota pendente na base:
+                # mesma confirmação que o operador faria — auto-vincula.
+                filho, ja_resolvido = _preparar_filho(
+                    numero, 'MEDIA', StatusProcessamento.PROCESSANDO, '',
+                )
+                if filho.id not in filhos:
+                    filhos.append(filho.id)
+                if ja_resolvido:
+                    preservados.append(numero)
+                else:
+                    try:
+                        conciliacao_service = ConciliacaoService()
+                        conciliacao_service.conciliar(filho.id, numero)
+                        auto_vinculados.append(numero)
+                        logger.info(
+                            '[DIVISÓRIA] NF=%s validada pela base de notas → vinculada',
+                            numero,
+                        )
+                    except Exception as exc:
+                        repo.atualizar(
+                            filho,
+                            status_processamento=StatusProcessamento.REVISAO,
+                            erro_mensagem=f'Auto-vinculação (validada pela base) falhou: {exc}',
+                        )
+                        revisao.append(numero)
             else:
                 # Confiança BAIXA: tenta IA antes de mandar para revisão
                 resultado_ia = _tentar_fallback_ia(texto_ocr, numero)
@@ -516,6 +554,26 @@ def _tratar_divisoria(canhoto, resultado_ocr: dict, tipo_pagina: str) -> dict:
     }
 
 
+def _nota_pendente_para(numero: Optional[str]):
+    """
+    Validação cruzada com a base de notas: retorna a NotaFiscal AGUARDANDO_CANHOTO
+    (sem canhoto vinculado) cujo número bate exatamente com o detectado, ou None.
+
+    Um número lido com confiança BAIXA que corresponde exatamente a uma nota
+    pendente na base é quase certamente correto — é a mesma verificação que o
+    operador faria manualmente na revisão. Isso evita mandar para REVISAO
+    canhotos que a própria base de notas consegue confirmar.
+    """
+    if not numero or not getattr(settings, 'VALIDAR_PELA_BASE_DE_NOTAS', True):
+        return None
+    from apps.notas.models import NotaFiscal, StatusNota
+    return NotaFiscal.objects.filter(
+        numero=str(numero),
+        status=StatusNota.AGUARDANDO_CANHOTO,
+        canhoto__isnull=True,
+    ).first()
+
+
 def _tentar_fallback_ia(texto_ocr: str, numero_atual: Optional[str] = None) -> Optional[dict]:
     """
     Tenta usar IA para extrair o número da NF de texto OCR incerto.
@@ -556,209 +614,12 @@ def _finalizar_canhoto_erro(canhoto, mensagem: str) -> None:
 )
 def processar_canhoto(self, caminho_arquivo: str) -> dict:
     """
-    Process a newly detected canhoto file.
-
-    Steps:
-    1. Log the start of processing.
-    2. Create a Canhoto DB record with status PROCESSANDO.
-    3. Run OCRService.processar_arquivo() to extract text and invoice number.
-    4. If invoice number found: run ConciliacaoService.conciliar().
-    5. Move the file to /processados/ (success) or /erro/ (failure).
-    6. Update the Canhoto's final status.
-    7. Return a result dict.
-
-    On exception: retry with exponential backoff (60s, 120s, 240s).
-    After max_retries: move file to /erro/ and mark Canhoto as ERRO.
-
-    Args:
-        caminho_arquivo: absolute path to the scanned file.
-
-    Returns:
-        dict with keys: sucesso (bool), canhoto_id (int|None), numero_nota (str|None),
-        mensagem (str).
+    Task legada mantida apenas para compatibilidade com mensagens antigas na
+    fila. Delega para processar_arquivo — fluxo unificado (IA, confiança,
+    validação pela base). A implementação própria anterior tinha regras
+    divergentes (sem IA, sem gate de confiança) e foi removida.
     """
-    logger.info('[processar_canhoto] Iniciando: arquivo=%s task_id=%s', caminho_arquivo, self.request.id)
-
-    from apps.canhotos.models import StatusProcessamento
-    from repositories.canhoto_repository import CanhotoRepository
-    from services.ocr_service import OCRService
-    from services.conciliacao_service import ConciliacaoService
-    from core.exceptions import NotaFiscalNaoEncontradaException, ConciliacaoException
-
-    canhoto_repo = CanhotoRepository()
-    ocr_service = OCRService()
-    canhoto_id = None
-
-    try:
-        # -- Step 1: Verify file exists
-        caminho = Path(caminho_arquivo)
-        if not caminho.exists():
-            logger.error('[processar_canhoto] Arquivo não encontrado: %s', caminho_arquivo)
-            return {
-                'sucesso': False,
-                'canhoto_id': None,
-                'numero_nota': None,
-                'mensagem': f'Arquivo não encontrado: {caminho_arquivo}',
-            }
-
-        # -- Step 2: Create Canhoto record with PROCESSANDO status
-        # Store relative to MEDIA_ROOT if possible
-        media_root = Path(settings.MEDIA_ROOT)
-        try:
-            arquivo_campo = str(caminho.relative_to(media_root))
-        except ValueError:
-            arquivo_campo = caminho_arquivo
-
-        canhoto = canhoto_repo.criar(
-            arquivo=arquivo_campo,
-            status_processamento=StatusProcessamento.PROCESSANDO,
-        )
-        canhoto_id = canhoto.id
-        logger.info('[processar_canhoto] Canhoto criado: id=%s', canhoto_id)
-
-        # -- Step 3: Run OCR
-        resultado_ocr = ocr_service.processar_arquivo(caminho_arquivo)
-        numero_nota = resultado_ocr.get('numero_nota')
-        texto_ocr = resultado_ocr.get('texto', '')
-        ocr_sucesso = resultado_ocr.get('sucesso', False)
-        ocr_erro = resultado_ocr.get('erro')
-
-        logger.info(
-            '[processar_canhoto] OCR concluído: canhoto_id=%s numero_nota=%s sucesso=%s',
-            canhoto_id, numero_nota, ocr_sucesso,
-        )
-
-        if not ocr_sucesso:
-            # OCR failed: mark canhoto as ERRO and move file
-            canhoto_repo.atualizar(
-                canhoto,
-                status_processamento=StatusProcessamento.ERRO,
-                erro_mensagem=ocr_erro or 'Falha no OCR',
-                numero_detectado='',
-            )
-            _mover_para_erro(caminho_arquivo, f'OCR falhou: {ocr_erro}')
-            return {
-                'sucesso': False,
-                'canhoto_id': canhoto_id,
-                'numero_nota': None,
-                'mensagem': f'OCR falhou: {ocr_erro}',
-            }
-
-        # Update detected number, date and persist OCR text
-        campos_canhoto = {'numero_detectado': numero_nota or '', 'texto_ocr': texto_ocr}
-        data_recebimento = resultado_ocr.get('data_recebimento')
-        if data_recebimento:
-            campos_canhoto['data_recebimento'] = data_recebimento
-        canhoto_repo.atualizar(canhoto, **campos_canhoto)
-
-        # -- Step 4: Attempt conciliation if invoice number was found
-        if numero_nota:
-            conciliacao_service = ConciliacaoService()
-            try:
-                resultado = conciliacao_service.conciliar(canhoto_id, numero_nota)
-                logger.info(
-                    '[processar_canhoto] Conciliação bem-sucedida: canhoto_id=%s nota=%s',
-                    canhoto_id, numero_nota,
-                )
-                # -- Step 5: Move to processados
-                _mover_para_processados(caminho_arquivo, numero_nota)
-                return {
-                    'sucesso': True,
-                    'canhoto_id': canhoto_id,
-                    'numero_nota': numero_nota,
-                    'mensagem': resultado.mensagem,
-                }
-            except NotaFiscalNaoEncontradaException as exc:
-                # OCR found a number but it's not in our system
-                logger.warning(
-                    '[processar_canhoto] Nota não encontrada: canhoto_id=%s numero=%s',
-                    canhoto_id, numero_nota,
-                )
-                canhoto_repo.atualizar(
-                    canhoto,
-                    status_processamento=StatusProcessamento.ERRO,
-                    erro_mensagem=str(exc),
-                )
-                _mover_para_erro(caminho_arquivo, str(exc))
-                return {
-                    'sucesso': False,
-                    'canhoto_id': canhoto_id,
-                    'numero_nota': numero_nota,
-                    'mensagem': str(exc),
-                }
-            except ConciliacaoException as exc:
-                logger.error(
-                    '[processar_canhoto] ConciliacaoException: canhoto_id=%s erro=%s',
-                    canhoto_id, exc,
-                )
-                canhoto_repo.atualizar(
-                    canhoto,
-                    status_processamento=StatusProcessamento.ERRO,
-                    erro_mensagem=str(exc),
-                )
-                _mover_para_erro(caminho_arquivo, str(exc))
-                return {
-                    'sucesso': False,
-                    'canhoto_id': canhoto_id,
-                    'numero_nota': numero_nota,
-                    'mensagem': str(exc),
-                }
-        else:
-            # OCR ran but could not find an invoice number
-            mensagem = 'OCR concluído mas número da nota não encontrado no texto.'
-            canhoto_repo.atualizar(
-                canhoto,
-                status_processamento=StatusProcessamento.ERRO,
-                erro_mensagem=mensagem,
-            )
-            _mover_para_erro(caminho_arquivo, mensagem)
-            return {
-                'sucesso': False,
-                'canhoto_id': canhoto_id,
-                'numero_nota': None,
-                'mensagem': mensagem,
-            }
-
-    except Exception as exc:
-        logger.exception(
-            '[processar_canhoto] Exceção inesperada: arquivo=%s canhoto_id=%s tentativa=%d',
-            caminho_arquivo, canhoto_id, self.request.retries,
-        )
-
-        # Update canhoto status if we managed to create the record
-        if canhoto_id:
-            try:
-                canhoto = canhoto_repo.buscar_por_id(canhoto_id)
-                if canhoto:
-                    canhoto_repo.atualizar(
-                        canhoto,
-                        status_processamento=StatusProcessamento.ERRO,
-                        erro_mensagem=f'Erro inesperado: {exc}',
-                    )
-            except Exception:
-                pass
-
-        # Retry with exponential backoff
-        if self.request.retries < self.max_retries:
-            delay = 60 * (2 ** self.request.retries)  # 60s, 120s, 240s
-            logger.info(
-                '[processar_canhoto] Reagendando (tentativa %d/%d) em %ds',
-                self.request.retries + 1, self.max_retries, delay,
-            )
-            raise self.retry(exc=exc, countdown=delay)
-
-        # Max retries reached: move to error folder
-        logger.error(
-            '[processar_canhoto] Max retries atingido para %s. Movendo para /erro/',
-            caminho_arquivo,
-        )
-        _mover_para_erro(caminho_arquivo, f'Max retries atingido: {exc}')
-        return {
-            'sucesso': False,
-            'canhoto_id': canhoto_id,
-            'numero_nota': None,
-            'mensagem': f'Falha após {self.max_retries} tentativas: {exc}',
-        }
+    return processar_arquivo(caminho_arquivo, 'canhoto')
 
 
 @shared_task(name='tasks.ocr_tasks.reprocessar_canhoto')
@@ -893,27 +754,35 @@ def reprocessar_canhoto(canhoto_id: int) -> dict:
                 }
 
         if confianca == 'BAIXA':
-            resultado_ia = _tentar_fallback_ia(texto_ocr, numero_nota)
-            if resultado_ia:
-                numero_nota = resultado_ia['numero']
+            # 1º: validação cruzada com a base de notas pendentes
+            if _nota_pendente_para(numero_nota):
                 confianca = 'MEDIA'
-                canhoto_repo.atualizar(canhoto, numero_detectado=numero_nota)
                 logger.info(
-                    '[reprocessar_canhoto] IA confirmou/corrigiu NF=%s',
+                    '[reprocessar_canhoto] NF=%s validada pela base de notas → MEDIA',
                     numero_nota,
                 )
             else:
-                canhoto_repo.atualizar(
-                    canhoto,
-                    status_processamento=StatusProcessamento.REVISAO,
-                    erro_mensagem=f'Confiança baixa — confirmar NF {numero_nota} manualmente.',
-                )
-                return {
-                    'sucesso': False,
-                    'canhoto_id': canhoto_id,
-                    'numero_nota': numero_nota,
-                    'mensagem': 'Confiança baixa — enviado para revisão manual.',
-                }
+                resultado_ia = _tentar_fallback_ia(texto_ocr, numero_nota)
+                if resultado_ia:
+                    numero_nota = resultado_ia['numero']
+                    confianca = 'MEDIA'
+                    canhoto_repo.atualizar(canhoto, numero_detectado=numero_nota)
+                    logger.info(
+                        '[reprocessar_canhoto] IA confirmou/corrigiu NF=%s',
+                        numero_nota,
+                    )
+                else:
+                    canhoto_repo.atualizar(
+                        canhoto,
+                        status_processamento=StatusProcessamento.REVISAO,
+                        erro_mensagem=f'Confiança baixa — confirmar NF {numero_nota} manualmente.',
+                    )
+                    return {
+                        'sucesso': False,
+                        'canhoto_id': canhoto_id,
+                        'numero_nota': numero_nota,
+                        'mensagem': 'Confiança baixa — enviado para revisão manual.',
+                    }
 
         if numero_nota:
             if canhoto.nota_id:
@@ -964,36 +833,3 @@ def reprocessar_canhoto(canhoto_id: int) -> dict:
             'numero_nota': None,
             'mensagem': f'Erro inesperado: {exc}',
         }
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers (not Celery tasks)
-# ---------------------------------------------------------------------------
-
-def _mover_para_processados(caminho_arquivo: str, numero_nota: str = '') -> None:
-    """Move file to the processados directory. Silently logs on failure."""
-    from django.conf import settings
-    from pathlib import Path
-    processados_dir = getattr(settings, 'SCANNER_PROCESSED_DIR', '/processados')
-    destino = Path(processados_dir) / numero_nota if numero_nota else Path(processados_dir)
-    try:
-        from core.utils import garantir_diretorios, mover_arquivo
-        garantir_diretorios(destino)
-        mover_arquivo(caminho_arquivo, str(destino))
-        logger.info('Arquivo movido para processados: %s -> %s', caminho_arquivo, destino)
-    except Exception as exc:
-        logger.warning('Falha ao mover arquivo para processados: %s | %s', caminho_arquivo, exc)
-
-
-def _mover_para_erro(caminho_arquivo: str, motivo: str = '') -> None:
-    """Move file to the erro directory. Silently logs on failure."""
-    from django.conf import settings
-    from pathlib import Path
-    erro_dir = getattr(settings, 'SCANNER_ERROR_DIR', '/erro')
-    try:
-        from core.utils import garantir_diretorios, mover_arquivo
-        garantir_diretorios(erro_dir)
-        mover_arquivo(caminho_arquivo, erro_dir)
-        logger.info('Arquivo movido para erro: %s -> %s | motivo: %s', caminho_arquivo, erro_dir, motivo)
-    except Exception as exc:
-        logger.warning('Falha ao mover arquivo para erro: %s | %s', caminho_arquivo, exc)
