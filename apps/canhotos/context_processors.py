@@ -1,32 +1,28 @@
 """
-Context processors for Canhotos — exposes counters used in the navbar
-(e.g. the "Revisão" and "Erros" tab badges) on every page without each
-view needing to compute it explicitly.
+Context processors for Canhotos — expõe os contadores da navbar (badges de
+Revisão, Erros e Processando) em todas as páginas.
+
+Um único processor com uma única query agregada — antes eram três processors
+com três queries COUNT separadas por página renderizada.
 """
+from django.db.models import Count, Q
+
 from apps.canhotos.models import Canhoto, StatusProcessamento
 
 
-def revisao_pendente_count(request):
+def contadores_navbar(request):
     try:
-        count = Canhoto.objects.filter(status_processamento=StatusProcessamento.REVISAO).count()
+        contagem = Canhoto.objects.aggregate(
+            revisao=Count('id', filter=Q(status_processamento=StatusProcessamento.REVISAO)),
+            erro=Count('id', filter=Q(status_processamento=StatusProcessamento.ERRO)),
+            processando=Count('id', filter=Q(status_processamento__in=[
+                StatusProcessamento.PENDENTE, StatusProcessamento.PROCESSANDO,
+            ])),
+        )
+        return {
+            'revisao_pendente_count': contagem['revisao'],
+            'erro_count': contagem['erro'],
+            'processando_count': contagem['processando'],
+        }
     except Exception:
-        count = 0
-    return {'revisao_pendente_count': count}
-
-
-def erro_count(request):
-    try:
-        count = Canhoto.objects.filter(status_processamento=StatusProcessamento.ERRO).count()
-    except Exception:
-        count = 0
-    return {'erro_count': count}
-
-
-def processando_count(request):
-    try:
-        count = Canhoto.objects.filter(
-            status_processamento__in=[StatusProcessamento.PENDENTE, StatusProcessamento.PROCESSANDO],
-        ).count()
-    except Exception:
-        count = 0
-    return {'processando_count': count}
+        return {'revisao_pendente_count': 0, 'erro_count': 0, 'processando_count': 0}

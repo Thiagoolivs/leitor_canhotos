@@ -131,6 +131,19 @@ class NotaFiscalCreateView(CreateView):
         response = super().form_valid(form)
         messages.success(self.request, f'Nota Fiscal {self.object.numero} criada com sucesso.')
         logger.info('NotaFiscal criada: numero=%s', self.object.numero)
+        # Retro-conciliação: se já existe canhoto escaneado esperando por este
+        # número (em ERRO/REVISAO), vincula agora e tira da fila.
+        try:
+            from services.conciliacao_service import ConciliacaoService
+            resultado = ConciliacaoService().conciliar_pendentes_para_nota(self.object)
+            if resultado:
+                messages.success(
+                    self.request,
+                    f'Canhoto #{resultado.canhoto_id} que aguardava na fila foi '
+                    'vinculado automaticamente a esta nota.',
+                )
+        except Exception:
+            logger.warning('Retro-conciliação falhou para NF %s', self.object.numero, exc_info=True)
         return response
 
     def form_invalid(self, form):

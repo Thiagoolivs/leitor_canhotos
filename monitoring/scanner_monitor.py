@@ -38,34 +38,49 @@ class ScannerFileHandler(FileSystemEventHandler):
 
     EXTENSOES_SUPORTADAS = {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif'}
 
+    # Janela de deduplicação: o mesmo arquivo pode disparar on_created E
+    # on_moved (scanner grava em .tmp e renomeia). Sem uma janela persistente,
+    # cada evento enfileira uma tarefa e o canhoto é criado em duplicata.
+    DEDUP_TTL_SEGUNDOS = 120
+
     def __init__(self, pasta_origem: str, tipo: str):
         super().__init__()
         assert tipo in ('nota', 'canhoto'), f"tipo deve ser 'nota' ou 'canhoto', recebeu: {tipo}"
         self.pasta_origem = pasta_origem
         self.tipo = tipo
-        self._processando: set = set()
+        self._enfileirados: dict = {}  # chave -> timestamp do enfileiramento
+
+    def _ja_enfileirado(self, chave: str) -> bool:
+        """True se o arquivo foi enfileirado dentro da janela de dedup."""
+        agora = time.time()
+        # Poda entradas antigas para o dict não crescer indefinidamente
+        expirados = [k for k, ts in self._enfileirados.items() if agora - ts > self.DEDUP_TTL_SEGUNDOS]
+        for k in expirados:
+            del self._enfileirados[k]
+        return chave in self._enfileirados
 
     def _enfileirar(self, caminho: Path) -> None:
         if caminho.suffix.lower() not in self.EXTENSOES_SUPORTADAS:
             return
         chave = str(caminho)
-        if chave in self._processando:
+        if self._ja_enfileirado(chave):
+            logger.debug('[%s] Evento duplicado ignorado: %s', self.tipo.upper(), caminho.name)
             return
-        self._processando.add(chave)
+        self._enfileirados[chave] = time.time()
         logger.info('[%s][%s] Novo arquivo detectado: %s', self.tipo.upper(), self.pasta_origem, caminho.name)
         time.sleep(2)
         if not caminho.exists():
             logger.warning('[%s] Arquivo desapareceu: %s', self.tipo.upper(), caminho.name)
-            self._processando.discard(chave)
+            self._enfileirados.pop(chave, None)
             return
         try:
             fila = 'notas' if self.tipo == 'nota' else 'canhotos'
             task = processar_arquivo.apply_async(args=[str(caminho), self.tipo], queue=fila)
             logger.info('[%s] Tarefa enfileirada (fila=%s): arquivo=%s task_id=%s', self.tipo.upper(), fila, caminho.name, task.id)
         except Exception as exc:
+            # Falha ao enfileirar: libera a chave para permitir nova tentativa
+            self._enfileirados.pop(chave, None)
             logger.error('[%s] Erro ao enfileirar %s: %s', self.tipo.upper(), caminho.name, exc)
-        finally:
-            self._processando.discard(chave)
 
     def on_created(self, event: FileCreatedEvent) -> None:
         if not event.is_directory:

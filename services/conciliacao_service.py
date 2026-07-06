@@ -92,13 +92,9 @@ class ConciliacaoService:
 
         nota = self.nota_repo.buscar_por_numero(numero_nota)
         if nota is None:
-            # Update canhoto to ERRO because nota wasn't found
-            self.canhoto_repo.atualizar(
-                canhoto,
-                status_processamento=StatusProcessamento.ERRO,
-                erro_mensagem=f'Nota Fiscal não encontrada no sistema: {numero_nota}',
-                numero_detectado=numero_nota,
-            )
+            # NÃO atualiza o canhoto aqui: este método é @transaction.atomic e o
+            # raise abaixo reverteria qualquer escrita. O status final (ERRO ou
+            # REVISAO) é responsabilidade de quem chamou, que conhece o contexto.
             raise NotaFiscalNaoEncontradaException(
                 f'Nota Fiscal {numero_nota} não encontrada no sistema.',
                 numero=numero_nota,
@@ -108,6 +104,18 @@ class ConciliacaoService:
             raise ConciliacaoException(
                 f'Nota Fiscal {nota.numero} já está Finalizada. '
                 'Desvincule o canhoto existente antes de conciliar novamente.',
+                canhoto_id=canhoto_id,
+                nota_numero=nota.numero,
+            )
+
+        # Guarda contra corrida/duplicidade: o vínculo é OneToOne — se outro
+        # canhoto já ocupa esta nota, falha com mensagem clara em vez de
+        # IntegrityError genérico.
+        from apps.canhotos.models import Canhoto
+        canhoto_existente = Canhoto.objects.filter(nota=nota).exclude(pk=canhoto.pk).first()
+        if canhoto_existente:
+            raise ConciliacaoException(
+                f'Nota Fiscal {nota.numero} já possui o canhoto #{canhoto_existente.pk} vinculado.',
                 canhoto_id=canhoto_id,
                 nota_numero=nota.numero,
             )
@@ -177,6 +185,15 @@ class ConciliacaoService:
                 nota_numero=nota.numero,
             )
 
+        from apps.canhotos.models import Canhoto
+        canhoto_existente = Canhoto.objects.filter(nota=nota).exclude(pk=canhoto.pk).first()
+        if canhoto_existente:
+            raise ConciliacaoException(
+                f'Nota Fiscal {nota.numero} já possui o canhoto #{canhoto_existente.pk} vinculado.',
+                canhoto_id=canhoto_id,
+                nota_numero=nota.numero,
+            )
+
         # If canhoto was previously linked to a different nota, reset that nota's status
         if canhoto.nota_id and canhoto.nota_id != nota_id:
             nota_anterior = self.nota_repo.buscar_por_id(canhoto.nota_id)
@@ -188,9 +205,12 @@ class ConciliacaoService:
                 )
 
         canhoto.nota = nota
+        # Registra o número real da nota para manter o registro coerente
+        # (o OCR pode ter deixado um número errado/vazio em numero_detectado).
+        canhoto.numero_detectado = nota.numero
         canhoto.status_processamento = StatusProcessamento.SUCESSO
         canhoto.erro_mensagem = ''
-        canhoto.save(update_fields=['nota', 'status_processamento', 'erro_mensagem', 'updated_at'])
+        canhoto.save(update_fields=['nota', 'numero_detectado', 'status_processamento', 'erro_mensagem', 'updated_at'])
 
         self.nota_repo.atualizar_status(nota, StatusNota.FINALIZADO)
 
@@ -275,6 +295,88 @@ class ConciliacaoService:
             'ja_finalizadas': ja_finalizadas,
             'revisao_concluida': revisao_concluida,
         }
+
+    def conciliar_pendentes_para_nota(self, nota) -> Optional[ConciliacaoResultado]:
+        """
+        Retro-conciliação: quando uma nota é registrada, procura canhotos que
+        já foram escaneados com esse número mas ficaram presos em ERRO/REVISAO/
+        PENDENTE porque a nota ainda não existia. Concilia o mais antigo.
+
+        Isso resolve o problema de ordem de chegada: canhoto escaneado antes
+        da nota ser cadastrada não fica mais parado para sempre nas filas.
+
+        Args:
+            nota: instância de NotaFiscal recém-registrada.
+
+        Returns:
+            ConciliacaoResultado se um canhoto foi conciliado, None caso contrário.
+        """
+        from apps.canhotos.models import Canhoto, TipoPagina
+
+        if nota.status == StatusNota.FINALIZADO:
+            return None
+
+        canhoto = (
+            Canhoto.objects
+            .filter(
+                numero_detectado=nota.numero,
+                nota__isnull=True,
+                status_processamento__in=[
+                    StatusProcessamento.ERRO,
+                    StatusProcessamento.REVISAO,
+                    StatusProcessamento.PENDENTE,
+                ],
+            )
+            .exclude(tipo_pagina__in=[TipoPagina.DIVISORIA, TipoPagina.DIVISORIA_MISTA])
+            .order_by('created_at')
+            .first()
+        )
+        if canhoto is None:
+            return None
+
+        try:
+            resultado = self.conciliar(canhoto.id, nota.numero)
+            self.logger.info(
+                'Retro-conciliação: canhoto %s (aguardava em fila) vinculado à NF %s recém-registrada.',
+                canhoto.id, nota.numero,
+            )
+            return resultado
+        except Exception as exc:
+            self.logger.warning(
+                'Retro-conciliação falhou para canhoto %s / NF %s: %s',
+                canhoto.id, nota.numero, exc,
+            )
+            return None
+
+    def concluir_revisao_divisoria(self, canhoto_id: int) -> None:
+        """
+        Marca uma divisória como revisada (SUCESSO) por decisão do operador.
+
+        Necessário porque a conclusão automática exige que TODOS os números da
+        sequência tenham nota atribuída — mas números sem nota cadastrada no
+        sistema nunca podem ser atribuídos, deixando a divisória presa em
+        REVISAO para sempre. O operador confirma que conferiu a folha e encerra.
+
+        Raises:
+            ConciliacaoException: se o canhoto não existir ou não for divisória.
+        """
+        canhoto = self.canhoto_repo.buscar_por_id(canhoto_id)
+        if canhoto is None:
+            raise ConciliacaoException(
+                f'Canhoto não encontrado: id={canhoto_id}',
+                canhoto_id=canhoto_id,
+            )
+        if not canhoto.is_divisoria:
+            raise ConciliacaoException(
+                f'Canhoto {canhoto_id} não é uma folha divisória.',
+                canhoto_id=canhoto_id,
+            )
+        self.canhoto_repo.atualizar(
+            canhoto,
+            status_processamento=StatusProcessamento.SUCESSO,
+            erro_mensagem='',
+        )
+        self.logger.info('Revisão da divisória %s concluída pelo operador.', canhoto_id)
 
     @transaction.atomic
     def desvincular(self, canhoto_id: int) -> None:

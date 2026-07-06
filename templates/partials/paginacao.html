@@ -1,0 +1,36 @@
+{% comment %}
+  Paginação reutilizável. Requer `page_obj` no contexto.
+  Preserva todos os parâmetros GET exceto `page`.
+{% endcomment %}
+{% if page_obj.has_other_pages %}
+<nav class="mt-3" aria-label="Paginação">
+  <ul class="pagination justify-content-center">
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?page=1{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val|urlencode }}{% endif %}{% endfor %}" aria-label="Primeira página"><i class="bi bi-chevron-double-left"></i></a>
+      </li>
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val|urlencode }}{% endif %}{% endfor %}" aria-label="Página anterior"><i class="bi bi-chevron-left"></i></a>
+      </li>
+    {% endif %}
+    {% for num in page_obj.paginator.page_range %}
+      {% if page_obj.number == num %}
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+      {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
+        <li class="page-item"><a class="page-link" href="?page={{ num }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val|urlencode }}{% endif %}{% endfor %}">{{ num }}</a></li>
+      {% endif %}
+    {% endfor %}
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val|urlencode }}{% endif %}{% endfor %}" aria-label="Próxima página"><i class="bi bi-chevron-right"></i></a>
+      </li>
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, val in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ val|urlencode }}{% endif %}{% endfor %}" aria-label="Última página"><i class="bi bi-chevron-double-right"></i></a>
+      </li>
+    {% endif %}
+  </ul>
+  <p class="text-center text-muted small">
+    Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }} &mdash; {{ page_obj.paginator.count }} registro(s)
+  </p>
+</nav>
+{% endif %}

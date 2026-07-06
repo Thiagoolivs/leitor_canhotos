@@ -60,7 +60,9 @@
     {% if canhotos_revisao %}
     <div class="alert alert-info border-0 mb-3 py-2 px-3">
       <i class="bi bi-info-circle me-1"></i>
-      Clique em <strong>Abrir e Revisar</strong> para ver o arquivo escaneado e vincular manualmente à nota fiscal correta.
+      <strong>Revisão rápida:</strong> confira o número no campo <strong>Confirmar número</strong>
+      (clique no nome do arquivo para ver a imagem), ajuste se necessário e clique em
+      <i class="bi bi-check-lg"></i> — o canhoto é vinculado e sai da fila sem abrir outra página.
     </div>
     <div class="card shadow-sm">
       <div class="card-body p-0">
@@ -70,11 +72,11 @@
               <tr>
                 <th>#</th>
                 <th>Arquivo</th>
-                <th>Nº Detectado</th>
                 <th>Confiança</th>
-                <th>Motivo / Erro</th>
+                <th>Motivo</th>
                 <th>Aguardando há</th>
-                <th class="text-center">Ação</th>
+                <th style="min-width:200px;">Confirmar número</th>
+                <th class="text-center">Abrir</th>
               </tr>
             </thead>
             <tbody>
@@ -85,19 +87,12 @@
                   {% if canhoto.arquivo %}
                     <a href="{% url 'canhotos:arquivo' canhoto.pk %}" target="_blank"
                        class="text-truncate d-inline-block text-decoration-none"
-                       style="max-width:160px;" title="{{ canhoto.nome_arquivo }}">
+                       style="max-width:160px;" title="Ver imagem: {{ canhoto.nome_arquivo }}">
                       <i class="bi bi-file-earmark me-1 text-muted"></i>
                       <span class="text-dark">{{ canhoto.nome_arquivo }}</span>
                     </a>
                   {% else %}
                     <span class="text-muted small">Sem arquivo</span>
-                  {% endif %}
-                </td>
-                <td>
-                  {% if canhoto.numero_detectado %}
-                    <code class="text-dark">{{ canhoto.numero_detectado }}</code>
-                  {% else %}
-                    <span class="text-muted small">Não detectado</span>
                   {% endif %}
                 </td>
                 <td>
@@ -111,15 +106,30 @@
                     <span class="text-muted">—</span>
                   {% endif %}
                 </td>
-                <td class="small text-muted" style="max-width:260px;">
+                <td class="small text-muted" style="max-width:220px;">
                   <span class="d-inline-block text-truncate w-100" title="{{ canhoto.erro_mensagem }}">
-                    {{ canhoto.erro_mensagem|default:"—"|truncatechars:70 }}
+                    {{ canhoto.erro_mensagem|default:"—"|truncatechars:60 }}
                   </span>
                 </td>
-                <td class="small text-muted text-nowrap">{{ canhoto.updated_at|timesince }} atrás</td>
-                <td class="text-center text-nowrap">
-                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-warning">
-                    <i class="bi bi-pencil-square me-1"></i>Abrir e Revisar
+                <td class="small text-muted text-nowrap">{{ canhoto.updated_at|timesince }}</td>
+                <td>
+                  <!-- Revisão inline: confirma/corrige o número sem sair da lista -->
+                  <form method="post" action="{% url 'canhotos:corrigir' canhoto.pk %}" class="d-flex gap-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'canhotos:revisao' %}">
+                    <input type="text" name="numero_detectado" class="form-control form-control-sm"
+                           placeholder="Nº da NF" value="{{ canhoto.numero_detectado }}"
+                           autocomplete="off" aria-label="Confirmar número da NF do canhoto {{ canhoto.pk }}">
+                    <button type="submit" class="btn btn-sm btn-success flex-shrink-0"
+                            title="Confirmar número e vincular à nota">
+                      <i class="bi bi-check-lg"></i>
+                    </button>
+                  </form>
+                </td>
+                <td class="text-center">
+                  <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-outline-primary"
+                     title="Abrir para ver a imagem e mais opções">
+                    <i class="bi bi-eye"></i>
                   </a>
                 </td>
               </tr>
@@ -185,11 +195,24 @@
                     {% endif %}
                   {% endwith %}
                 </td>
-                <td class="small text-muted text-nowrap">{{ canhoto.updated_at|timesince }} atrás</td>
-                <td class="text-center">
+                <td class="small text-muted text-nowrap">{{ canhoto.updated_at|timesince }}</td>
+                <td class="text-center text-nowrap">
                   <a href="{% url 'canhotos:detalhe' canhoto.pk %}" class="btn btn-sm btn-warning">
                     <i class="bi bi-pencil-square me-1"></i>Abrir e Revisar
                   </a>
+                  <form method="post" action="{% url 'canhotos:concluir_revisao' canhoto.pk %}"
+                        class="d-inline" id="form-concluir-{{ canhoto.pk }}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'canhotos:revisao' %}">
+                    <button type="submit" class="btn btn-sm btn-outline-success ms-1"
+                            title="Marcar como conferida mesmo que nem todos os números tenham nota no sistema"
+                            data-confirm="Concluir a revisão da divisória #{{ canhoto.pk }}? Ela sairá da fila de revisão."
+                            data-confirm-danger="false"
+                            data-confirm-label="Concluir"
+                            data-form="form-concluir-{{ canhoto.pk }}">
+                      <i class="bi bi-check2-all"></i>
+                    </button>
+                  </form>
                 </td>
               </tr>
               {% endfor %}
