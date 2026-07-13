@@ -1,26 +1,67 @@
 /*
  * main.css - Leitor de Canhotos
- * Bootstrap 5 extension with domain-specific components.
+ * Extensão do Bootstrap 5 com identidade visual própria:
+ * tipografia Inter, sombras suaves em camadas, cores dessaturadas
+ * e microinterações discretas.
  */
 
 /* ===================================================================
-   CSS VARIABLES
+   VARIÁVEIS
    =================================================================== */
 
 :root {
-  --lc-blue-dark:  #0d3b78;
-  --lc-blue:       #0d6efd;
-  --lc-radius:     0.5rem;
-  --lc-shadow:     0 2px 8px rgba(0, 0, 0, 0.08);
-  --lc-shadow-md:  0 4px 16px rgba(0, 0, 0, 0.12);
+  --lc-blue-dark:   #0e3a6d;
+  --lc-blue:        #2563eb;
+  --lc-blue-soft:   #eff4ff;
+  --lc-navy:        #1e293b;
+  --lc-ink:         #0f172a;
+  --lc-text:        #334155;
+  --lc-muted:       #64748b;
+  --lc-border:      #e2e8f0;
+  --lc-bg:          #f2f5f9;
+  --lc-radius:      0.75rem;
+  --lc-radius-sm:   0.5rem;
+  --lc-shadow:      0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
+  --lc-shadow-md:   0 2px 4px rgba(15, 23, 42, 0.05), 0 12px 28px rgba(15, 23, 42, 0.10);
 }
 
 /* ===================================================================
-   GLOBAL BODY
+   BASE
    =================================================================== */
 
 body {
-  font-size: 0.925rem;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 0.92rem;
+  color: var(--lc-text);
+  background-color: var(--lc-bg) !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--lc-ink);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+a {
+  color: var(--lc-blue);
+}
+
+code {
+  background: #f1f5f9;
+  color: var(--lc-ink);
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  border: 1px solid var(--lc-border);
+}
+
+/* Foco visível e elegante em toda a aplicação */
+.form-control:focus,
+.form-select:focus,
+.btn:focus-visible {
+  border-color: var(--lc-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 /* ===================================================================
@@ -28,112 +69,137 @@ body {
    =================================================================== */
 
 .navbar-custom {
-  background: linear-gradient(90deg, var(--lc-blue-dark) 0%, var(--lc-blue) 100%);
-  box-shadow: 0 2px 10px rgba(13, 60, 120, 0.25);
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
+  background: linear-gradient(135deg, #0c2f5a 0%, #14498f 55%, #1d64c8 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 4px 20px rgba(12, 47, 90, 0.35);
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
 }
 
 .navbar-brand {
-  font-size: 1.1rem;
-  letter-spacing: 0.01em;
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .navbar-brand .brand-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9px;
   font-size: 1rem;
 }
 
 .navbar-custom .nav-link {
   font-weight: 500;
   font-size: 0.875rem;
-  padding: 0.45rem 0.8rem;
-  border-radius: 6px;
-  margin: 0 0.1rem;
-  color: rgba(255, 255, 255, 0.82);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  margin: 0 0.12rem;
+  color: rgba(255, 255, 255, 0.8);
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 
 .navbar-custom .nav-link:hover {
-  background-color: rgba(255, 255, 255, 0.14);
+  background-color: rgba(255, 255, 255, 0.12);
   color: #fff;
 }
 
 .navbar-custom .nav-link.active {
-  background-color: rgba(255, 255, 255, 0.22);
+  background-color: rgba(255, 255, 255, 0.2);
   color: #fff;
   font-weight: 600;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset;
+}
+
+.navbar-custom .badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 20px;
+  vertical-align: 1px;
 }
 
 /* ===================================================================
-   STATUS BADGES
+   BADGES DE STATUS
    =================================================================== */
 
 .badge-status {
-  display: inline-block;
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
   border-radius: 20px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
-.badge-aguardando  { background-color: #ffc107; color: #000; }
-.badge-finalizado  { background-color: #198754; color: #fff; }
-.badge-erro        { background-color: #dc3545; color: #fff; }
-.badge-pendente    { background-color: #6c757d; color: #fff; }
-.badge-processando { background-color: #0d6efd; color: #fff; }
-.badge-sucesso     { background-color: #198754; color: #fff; }
-.badge-revisao     { background-color: #0dcaf0; color: #000; }
+/* Tons suaves (fundo claro + texto escuro): menos gritante que cor sólida */
+.badge-aguardando  { background: #fdf3d6; color: #7a5c00; border: 1px solid #f5e2a4; }
+.badge-finalizado  { background: #d9f2e5; color: #0d6742; border: 1px solid #b3e4cd; }
+.badge-erro        { background: #fbdfe2; color: #93293a; border: 1px solid #f5bfc6; }
+.badge-pendente    { background: #e8ecf1; color: #47566b; border: 1px solid #d5dce5; }
+.badge-processando { background: #dbe8ff; color: #1949a8; border: 1px solid #bcd4fc; }
+.badge-sucesso     { background: #d9f2e5; color: #0d6742; border: 1px solid #b3e4cd; }
+.badge-revisao     { background: #d7f2f9; color: #0b5e75; border: 1px solid #b0e4f1; }
 
 /* ===================================================================
    CARDS
    =================================================================== */
 
 .card {
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--lc-border);
   border-radius: var(--lc-radius);
+  box-shadow: var(--lc-shadow);
+}
+
+.card.shadow-sm,
+.card.border-0 {
+  box-shadow: var(--lc-shadow) !important;
 }
 
 .card-header {
   font-weight: 600;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  border-bottom: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius) var(--lc-radius) 0 0 !important;
 }
 
-/* Clickable card for dashboard KPIs */
+.card-header.bg-white {
+  background: #fff !important;
+}
+
+/* Cards clicáveis do dashboard */
 .card-link {
   text-decoration: none;
   color: inherit;
   display: block;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.card-link:hover .card {
-  transform: translateY(-2px);
-  box-shadow: var(--lc-shadow-md) !important;
 }
 
 .card-link .card {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.card-link:hover .card {
+  transform: translateY(-3px);
+  border-color: #cbd8ea;
+  box-shadow: var(--lc-shadow-md) !important;
 }
 
 /* ===================================================================
-   ACTION SECTION (detail pages)
+   SEÇÕES DE AÇÃO (páginas de detalhe)
    =================================================================== */
 
 .action-section {
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: var(--lc-radius);
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-sm);
   padding: 1rem;
-  margin-bottom: 0.75rem;
-  background: #fff;
+  margin-bottom: 0.85rem;
+  background: #fbfcfe;
 }
 
 .action-section:last-child {
@@ -141,29 +207,51 @@ body {
 }
 
 .action-section-title {
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #6c757d;
-  margin-bottom: 0.6rem;
+  letter-spacing: 0.07em;
+  color: var(--lc-muted);
+  margin-bottom: 0.65rem;
 }
 
 /* ===================================================================
-   TABLES
+   TABELAS
    =================================================================== */
+
+.table {
+  --bs-table-hover-bg: var(--lc-blue-soft);
+}
 
 .table th {
   white-space: nowrap;
-  font-weight: 700;
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
+}
+
+/* Cabeçalho: azul-marinho suave no lugar do preto pesado do Bootstrap */
+.table > thead.table-dark {
+  --bs-table-bg: var(--lc-navy);
+  --bs-table-color: #cbd5e1;
+}
+
+.table > thead.table-dark th {
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
+  border-bottom: none;
 }
 
 .table td {
   vertical-align: middle;
-  font-size: 0.9rem;
+  font-size: 0.885rem;
+  padding-top: 0.62rem;
+  padding-bottom: 0.62rem;
+}
+
+.table tbody tr {
+  transition: background-color 0.12s ease;
 }
 
 .table .btn-sm {
@@ -171,90 +259,151 @@ body {
   font-size: 0.8rem;
 }
 
-/* Row hover reveal (action column) */
-.table tbody tr {
-  transition: background-color 0.1s ease;
+/* Sem listras: hover suave já orienta a leitura e a tabela fica mais limpa */
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+  --bs-table-accent-bg: transparent;
 }
 
 /* ===================================================================
-   FILTER FORM
+   BOTÕES
    =================================================================== */
+
+.btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: transform 0.12s ease, box-shadow 0.12s ease,
+              background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--lc-blue);
+  border-color: var(--lc-blue);
+}
+
+.btn-primary:hover {
+  background: #1d4fd7;
+  border-color: #1d4fd7;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn-success:hover,
+.btn-warning:hover,
+.btn-danger:hover {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+}
+
+/* ===================================================================
+   FORMULÁRIOS E FILTROS
+   =================================================================== */
+
+.form-control,
+.form-select {
+  border-color: var(--lc-border);
+  border-radius: 8px;
+}
 
 #filter-form .form-control,
 #filter-form .form-select {
-  font-size: 0.875rem;
+  font-size: 0.865rem;
 }
 
-/* Active filter indicator */
-.filter-active-badge {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background: var(--lc-blue);
-  border-radius: 50%;
-  margin-left: 4px;
-  vertical-align: middle;
+.form-label.fw-semibold {
+  font-size: 0.8rem;
+  font-weight: 600 !important;
+  color: var(--lc-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.3rem;
 }
 
 /* ===================================================================
-   PAGINATION
+   PAGINAÇÃO
    =================================================================== */
 
 .pagination .page-link {
   font-size: 0.85rem;
+  color: var(--lc-text);
+  border-color: var(--lc-border);
+  margin: 0 2px;
+  border-radius: 8px !important;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.pagination .page-link:hover {
+  background: var(--lc-blue-soft);
+  color: var(--lc-blue);
+}
+
+.pagination .page-item.active .page-link {
+  background: var(--lc-blue);
+  border-color: var(--lc-blue);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
 }
 
 /* ===================================================================
-   EMPTY STATE
+   ESTADO VAZIO
    =================================================================== */
 
 .empty-state {
-  padding: 3rem 1rem;
+  padding: 3.5rem 1rem;
   text-align: center;
-  color: #adb5bd;
+  color: #94a3b8;
 }
 
 .empty-state .bi {
-  font-size: 3rem;
+  font-size: 3.2rem;
   display: block;
-  margin-bottom: 0.75rem;
-  opacity: 0.5;
+  margin-bottom: 0.9rem;
+  opacity: 0.45;
 }
 
 .empty-state p {
-  margin-bottom: 0.5rem;
-  color: #6c757d;
+  margin-bottom: 0.4rem;
+  color: var(--lc-muted);
 }
 
 /* ===================================================================
-   PRIORITY / CALL-TO-ACTION BANNER (dashboard)
+   BANNERS DE PRIORIDADE (dashboard)
    =================================================================== */
 
 .priority-banner {
+  border: 1px solid var(--lc-border);
   border-left: 4px solid var(--lc-blue);
-  background: linear-gradient(90deg, rgba(13,110,253,0.06) 0%, transparent 60%);
-  border-radius: 0 var(--lc-radius) var(--lc-radius) 0;
-  padding: 0.9rem 1.1rem;
+  background: #fff;
+  border-radius: var(--lc-radius-sm);
+  padding: 0.9rem 1.15rem;
+  box-shadow: var(--lc-shadow);
 }
 
 .priority-banner.priority-warning {
-  border-left-color: #ffc107;
-  background: linear-gradient(90deg, rgba(255,193,7,0.08) 0%, transparent 60%);
+  border-left-color: #eab308;
+  background: linear-gradient(90deg, rgba(234, 179, 8, 0.06) 0%, #fff 55%);
 }
 
 .priority-banner.priority-danger {
-  border-left-color: #dc3545;
-  background: linear-gradient(90deg, rgba(220,53,69,0.07) 0%, transparent 60%);
+  border-left-color: #e11d48;
+  background: linear-gradient(90deg, rgba(225, 29, 72, 0.05) 0%, #fff 55%);
 }
 
 .priority-banner.priority-success {
-  border-left-color: #198754;
-  background: linear-gradient(90deg, rgba(25,135,84,0.07) 0%, transparent 60%);
+  border-left-color: #10b981;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.07) 0%, #fff 55%);
 }
 
 /* ===================================================================
-   DJANGO MESSAGES (auto-dismiss)
+   ALERTAS (mensagens Django)
    =================================================================== */
+
+.alert {
+  border-radius: var(--lc-radius-sm);
+  border: none;
+  box-shadow: var(--lc-shadow);
+}
 
 .alert-auto-dismiss {
   animation: fadeOutAlert 0.5s ease 5s forwards;
@@ -265,13 +414,13 @@ body {
 }
 
 /* ===================================================================
-   LOADING SPINNER
+   INDICADORES DE ATIVIDADE
    =================================================================== */
 
 .spinner-inline {
   width: 1em;
   height: 1em;
-  border: 2px solid rgba(0,0,0,0.1);
+  border: 2px solid rgba(15, 23, 42, 0.1);
   border-top-color: currentColor;
   border-radius: 50%;
   display: inline-block;
@@ -283,25 +432,25 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* "Atualizando..." dot indicator */
 .live-dot {
   display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #198754;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
   animation: pulse 2s ease infinite;
   vertical-align: middle;
-  margin-right: 4px;
+  margin-right: 5px;
 }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.4; transform: scale(0.75); }
+  50%       { opacity: 0.45; transform: scale(0.8); }
 }
 
 /* ===================================================================
-   FLOATING PREV/NEXT NAVIGATION
+   NAVEGAÇÃO FLUTUANTE ANTERIOR/PRÓXIMO
    =================================================================== */
 
 .nav-flutuante {
@@ -314,18 +463,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(13, 110, 253, 0.8);
+  background: rgba(37, 99, 235, 0.85);
+  backdrop-filter: blur(4px);
   color: #fff;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   border-radius: 50%;
   box-shadow: var(--lc-shadow-md);
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
 .nav-flutuante:hover {
-  background-color: var(--lc-blue);
+  background: var(--lc-blue);
   color: #fff;
-  transform: translateY(-50%) scale(1.1);
+  transform: translateY(-50%) scale(1.12);
 }
 
 .nav-flutuante-esq { left: 14px; }
@@ -336,13 +486,114 @@ body {
 }
 
 /* ===================================================================
+   ABAS (página de Revisão)
+   =================================================================== */
+
+.nav-tabs {
+  border-bottom: 1px solid var(--lc-border);
+  gap: 4px;
+}
+
+.nav-tabs .nav-link {
+  color: var(--lc-muted);
+  font-weight: 500;
+  font-size: 0.88rem;
+  border: 1px solid transparent;
+  border-radius: 9px 9px 0 0;
+  padding: 0.55rem 1rem;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.nav-tabs .nav-link:hover {
+  color: var(--lc-blue);
+  background: var(--lc-blue-soft);
+  border-color: transparent;
+}
+
+.nav-tabs .nav-link.active {
+  color: var(--lc-ink);
+  font-weight: 600;
+  background: #fff;
+  border-color: var(--lc-border) var(--lc-border) #fff;
+}
+
+/* ===================================================================
+   PÍLULAS DE STATUS (páginas de detalhe)
+   =================================================================== */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 7px 16px;
+  border-radius: 100px;
+  font-size: 0.865rem;
+  font-weight: 600;
+  box-shadow: var(--lc-shadow);
+}
+
+.status-pill-sucesso     { background: #d9f2e5; color: #0d6742; }
+.status-pill-erro        { background: #fbdfe2; color: #93293a; }
+.status-pill-revisao     { background: #d7f2f9; color: #0b5e75; }
+.status-pill-pendente    { background: #e8ecf1; color: #47566b; }
+.status-pill-processando { background: #dbe8ff; color: #1949a8; }
+
+/* ===================================================================
+   PAINEL DE TEXTO OCR
+   =================================================================== */
+
+.ocr-text-panel {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.76rem;
+  max-height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8fafc;
+  color: #475569;
+  padding: 0.9rem 1.1rem;
+  border-radius: 0 0 var(--lc-radius) var(--lc-radius);
+  line-height: 1.6;
+}
+
+/* Scrollbar discreta nos painéis roláveis */
+.ocr-text-panel::-webkit-scrollbar,
+.table-responsive::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ocr-text-panel::-webkit-scrollbar-thumb,
+.table-responsive::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+
+.ocr-text-panel::-webkit-scrollbar-thumb:hover,
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ===================================================================
+   BREADCRUMB
+   =================================================================== */
+
+.breadcrumb {
+  font-size: 0.82rem;
+}
+
+.breadcrumb-item a {
+  text-decoration: none;
+}
+
+/* ===================================================================
    TIMELINE
    =================================================================== */
 
 .timeline-item {
   position: relative;
-  padding-left: 10px;
-  border-left: 3px solid #dee2e6;
+  padding-left: 12px;
+  border-left: 3px solid var(--lc-border);
   margin-left: 12px;
 }
 
@@ -351,73 +602,35 @@ body {
 }
 
 /* ===================================================================
-   OCR TEXT PANEL
-   =================================================================== */
-
-.ocr-text-panel {
-  font-size: 0.78rem;
-  max-height: 320px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: #f8f9fa;
-  padding: 0.75rem 1rem;
-  border-radius: 0 0 var(--lc-radius) var(--lc-radius);
-  line-height: 1.55;
-}
-
-/* ===================================================================
-   STATUS PILL (larger, for detail pages)
-   =================================================================== */
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 6px 14px;
-  border-radius: 100px;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.status-pill-sucesso    { background: #d1e7dd; color: #0a3622; }
-.status-pill-erro       { background: #f8d7da; color: #58151c; }
-.status-pill-revisao    { background: #cff4fc; color: #055160; }
-.status-pill-pendente   { background: #e2e3e5; color: #41464b; }
-.status-pill-processando{ background: #cfe2ff; color: #084298; }
-
-/* ===================================================================
-   FOOTER
+   RODAPÉ E DIVERSOS
    =================================================================== */
 
 .footer {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  color: var(--lc-muted);
 }
-
-/* ===================================================================
-   FORM LABELS
-   =================================================================== */
-
-.form-label.fw-semibold {
-  font-size: 0.875rem;
-  color: #495057;
-}
-
-/* ===================================================================
-   SCROLLABLE TABLES
-   =================================================================== */
 
 .table-responsive {
   border-radius: 0 0 var(--lc-radius) var(--lc-radius);
 }
 
+.filter-active-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--lc-blue);
+  border-radius: 50%;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 /* ===================================================================
-   MOBILE RESPONSIVE TWEAKS
+   RESPONSIVO
    =================================================================== */
 
 @media (max-width: 576px) {
-  .btn { font-size: 0.875rem; }
-  h2 { font-size: 1.4rem; }
-  .fs-2 { font-size: 1.5rem !important; }
+  .btn { font-size: 0.86rem; }
+  h2 { font-size: 1.35rem; }
+  .fs-2 { font-size: 1.45rem !important; }
   .card-body { padding: 0.85rem; }
 }
